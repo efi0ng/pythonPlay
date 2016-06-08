@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 __author__ = 'JSmith' and 'SZhang'
 
 """assumes usual performance test hierarchy of folders.
@@ -25,11 +27,18 @@ import sys
 import os.path
 import json
 
-debug = False
+# globals
+
+_debug = False
+_output_file = None
 
 # ---------------------------------------------------------
 # TimingData and timing array output functions
 # ---------------------------------------------------------
+
+
+def sec_to_msec(secs):
+    return int(secs*1000)
 
 
 class TimingData:
@@ -48,82 +57,78 @@ class TimingData:
         self.operationLabels = []
 
     def to_json_dict(self):
-        testJsonDict = {}
-        testJsonDict['ToLogin'] = secondsToMilliseconds(self.startToLogin)
-        testJsonDict['ToMainForm'] = secondsToMilliseconds(self.loginToMainForm)
-        testJsonDict['Shutdown'] = secondsToMilliseconds(self.shutdown)
+        test_json_dict = dict(ToLogin=sec_to_msec(self.startToLogin),
+                              ToMainForm=sec_to_msec(self.loginToMainForm),
+                              Shutdown=sec_to_msec(self.shutdown))
 
-        if (self.selectMetalwork != None):
-            testJsonDict['SelectMetalwork'] = secondsToMilliseconds(self.selectMetalwork)
+        if self.selectMetalwork is not None:
+            test_json_dict['SelectMetalwork'] = sec_to_msec(self.selectMetalwork)
 
-        if (self.sapphireReport != None):
-            testJsonDict['SapphireReport'] = secondsToMilliseconds(self.sapphireReport)
+        if self.sapphireReport is not None:
+            test_json_dict['SapphireReport'] = sec_to_msec(self.sapphireReport)
 
-        if (self.pamirShutdown != None):
-            testJsonDict['PamirShutdown'] = secondsToMilliseconds(self.pamirShutdown)
+        if self.pamirShutdown is not None:
+            test_json_dict['PamirShutdown'] = sec_to_msec(self.pamirShutdown)
 
-        if (self.sapphireShutdown != None):
-            testJsonDict['SapphireShutdown'] = secondsToMilliseconds(self.sapphireShutdown)
+        if self.sapphireShutdown is not None:
+            test_json_dict['SapphireShutdown'] = sec_to_msec(self.sapphireShutdown)
 
-        if (self.fileSize != None):
-            testJsonDict['FileSize'] = self.fileSize
+        if self.fileSize is not None:
+            test_json_dict['FileSize'] = self.fileSize
 
-        if (len(self.runTimes) != 0):
-            key = 0
-            for runTime in self.runTimes:
-                testJsonDict[self.operationLabels[key]] = runTime
-                key = key+1
+        if len(self.runTimes) != 0:
+            for key, runTime in enumerate(self.runTimes):
+                test_json_dict[self.operationLabels[key]] = sec_to_msec(runTime)
 
-        return testJsonDict
+        return test_json_dict
 
     def to_file(self, outfile):
         print("%.3f\n%.3f" % (self.startToLogin, self.loginToMainForm), file=outfile)
 
-        if (self.selectMetalwork != None):
-            print ("%.3f" % (self.selectMetalwork), file=outfile)  ## print the time of selected Metalwork
+        if self.selectMetalwork is not None:
+            print ("%.3f" % self.selectMetalwork, file=outfile)  # print the time of selected Metalwork
 
-        if (len(self.runTimes) != 0):
+        if len(self.runTimes) != 0:
             for runTime in self.runTimes:
-                print("%.3f" % (runTime), file=outfile)
+                print("%.3f" % runTime, file=outfile)
 
-        if (self.sapphireReport != None):
-            print("%.3f" % (self.sapphireReport), file=outfile)  ## print the time of generating Sapphire Report
+        if self.sapphireReport is not None:
+            print("%.3f" % self.sapphireReport, file=outfile)  # print the time of generating Sapphire Report
 
-        if (self.pamirShutdown != None):
-            print("%.3f" % (self.pamirShutdown), file=outfile)  ## print the time of Pamir Shutdown
+        if self.pamirShutdown is not None:
+            print("%.3f" % self.pamirShutdown, file=outfile)  # print the time of Pamir Shutdown
 
-        if (self.sapphireShutdown != None):
-            print("%.3f" % (self.sapphireShutdown), file=outfile)  ## print the time of Sapphire Report Viewer Shutdown
+        if self.sapphireShutdown is not None:
+            print("%.3f" % self.sapphireShutdown, file=outfile)  # print the time of Sapphire Report Viewer Shutdown
 
-        print("%.3f" % (self.shutdown), file=outfile)
+        print("%.3f" % self.shutdown, file=outfile)
 
-        if (self.fileSize != None):
-            print("%.3f" % (self.fileSize), file=outfile)  ## print file size of the saved Pamir job
+        if self.fileSize is not None:
+            print("%.3f" % self.fileSize, file=outfile)  # print file size of the saved Pamir job
 
-        print("", file=outfile)  ## new line to create a gap for next result
+        print("", file=outfile)  # new line to create a gap for next result
 
 
-def outputTimingArrayToJSonFile(timing_array, fileName):
-    rootJsonDict = {}
+def output_timings_to_json_file(timing_array, fileName):
+    root_json_dict = {}
 
     for td in timing_array:
-
-        if (td == None):
+        if td is None:
             continue
 
-        testJsonDict = td.to_json_dict()
-
-        rootJsonDict[td.testLabel] = testJsonDict
+        test_json_dict = td.to_json_dict()
+        root_json_dict[td.testLabel] = test_json_dict
 
     with open(fileName, mode="w") as jsonFile:
-        json.dump(rootJsonDict, jsonFile, indent=3)
+        json.dump(root_json_dict, jsonFile, indent=3)
 
 
-def outputTimingArrayToFile(timing_array, outfile):
-    if debug: print ("\n===========================\n", file=outfile)
+def output_timings_to_txt_file(timing_array, outfile):
+    if _debug:
+        print("\n===========================\n", file=outfile)
 
     for td in timing_array:
-        if (td == None):
+        if td is None:
             continue
 
         td.to_file(outfile)
@@ -176,11 +181,6 @@ def secondsFromPerfLine(line):
     parts = line.split("\t")
     return float(parts[4])/1000.0
 
-
-def secondsToMilliseconds(secs):
-    return int(secs*1000)
-
-
 def searchSecondsFromPerfLine(lines, searchString):
     for line in lines:
         if line.find(searchString) >= 0 :
@@ -195,17 +195,17 @@ def getTotalTimeFromPerfLogRow(dataRow):
      return float(timeStr)
 
 
-def collectStartupDataForTest(timingData,tcLogSpec):
-    '''Collect data from the TestComplete Test logs for
-    the startup and shutdown.'''
+def collectStartupDataForTest(timing_data,tcLogSpec):
+    """Collect data from the TestComplete Test logs for
+    the startup and shutdown."""
 
     data = getDataFromFile(tcLogSpec)
-    if debug: debugPrintResults(tcLogSpec[0],data,outputfile)
+    if _debug: debugPrintResults(tcLogSpec[0],data,_output_file)
     if (len(data) >= 2):
-        timingData.startToLogin = secondsFromStopwatchLine(data[0])
-        timingData.loginToMainForm = secondsFromStopwatchLine(data[1])
+        timing_data.startToLogin = secondsFromStopwatchLine(data[0])
+        timing_data.loginToMainForm = secondsFromStopwatchLine(data[1])
     if (len(data) == 3):
-        timingData.shutdown = secondsFromStopwatchLine(data[2])
+        timing_data.shutdown = secondsFromStopwatchLine(data[2])
 
     return
 
@@ -215,83 +215,68 @@ def MegaByteFromFileSizeLine(line):
     return float(killoStr.strip())/1024.0
 
 
-def collectFileSizeForTest(timingData,tcLogSpec):
-    '''Collect data from the TestComplete Test logs for
-    the Pamir file size'''
+def collectFileSizeForTest(timing_data,tcLogSpec):
+    """Collect data from the TestComplete Test logs for
+    the Pamir file size"""
 
     data = getDataFromFile(tcLogSpec)
-    if debug: debugPrintResults(tcLogSpec[0],data,outputfile)
+    if _debug: debugPrintResults(tcLogSpec[0],data,_output_file)
     if (len(data) == 1):
-        timingData.fileSize = MegaByteFromFileSizeLine(data[0])
+        timing_data.fileSize = MegaByteFromFileSizeLine(data[0])
 
     return
 
 
 def collectDataForOneTest(tcLogSpec, perfLogSpec):
-    '''Collect data from the TestComplete and Pamir Performance Test logs for
-    one group of test runs.'''
+    """Collect data from the TestComplete and Pamir Performance Test logs for
+    one group of test runs."""
 
-    timingData = TimingData()
+    timing_data = TimingData()
 
-    collectStartupDataForTest(timingData, tcLogSpec)
+    collectStartupDataForTest(timing_data, tcLogSpec)
 
     data = getDataFromFile(perfLogSpec)
-    if debug: debugPrintResults(perfLogSpec[0],data,outputfile)
+    if _debug: debugPrintResults(perfLogSpec[0], data, _output_file)
     for dataRow in data:
-        timingData.runTimes.append(getTotalTimeFromPerfLogRow(dataRow))
+        timing_data.runTimes.append(getTotalTimeFromPerfLogRow(dataRow))
 
-    return timingData
+    return timing_data
 
 # ---------------------------------------------------------
 # Basic test specifications and collection
 # ---------------------------------------------------------
 
-KEY_TEST_LABEL = "label"
-KEY_OPLABEL = "operationLabel"
-KEY_TCLOGSPEC = "tcLogSpec"
-KEY_PERFLOGSPEC = "perfLogSpec"
-
-dpt1dict = {
-    KEY_TEST_LABEL: "DPT1",
-    KEY_OPLABEL: ["Design1", "Check1", "Design2", "Check2", "Design3", "Check3", "Design4", "Check4", "Design5", "Check5"],
-    KEY_TCLOGSPEC: ("./DPT1/testrun.log","TC.Stopwatch"),
-    KEY_PERFLOGSPEC: ("./DPT1/data/pamir-perf.log","UI.BuildDesign")}
-
-dpt2dict = {
-    KEY_TEST_LABEL: "DPT2",
-    KEY_OPLABEL: ["Design1", "Check1", "Design2", "Check2", "Design3", "Check3", "Design4", "Check4", "Design5", "Check5"],
-    KEY_TCLOGSPEC: ("./DPT2/testrun.log","TC.Stopwatch"),
-    KEY_PERFLOGSPEC: ("./DPT2/data/pamir-perf.log","UI.BuildDesign")}
-
-bbt3dict = {
-    KEY_TEST_LABEL: "BBT3",
-    KEY_OPLABEL: ["Build1", "Build2", "Build3", "Build4", "Build5", "Build6", "Build7", "Build8", "Build9", "Build10" ],
-    KEY_TCLOGSPEC: ("./BBT3/testrun.log","TC.Stopwatch"),
-    KEY_PERFLOGSPEC: ("./BBT3/data/pamir-perf.log","UI.Build")}
-
 
 class TestSpec:
-    def __init__(self):
-        self.tcLogSpec = None
-        self.perfLogSpec = None
-        self.testLabel = ""
-        self.operationLabels = []
+    def __init__(self, tc_log, perf_log, test_label, op_labels):
+        self.tcLogSpec = tc_log
+        self.perfLogSpec = perf_log
+        self.testLabel = test_label
+        self.operationLabels = op_labels
+
+DPT1_TEST = TestSpec(
+    test_label="DPT1",
+    op_labels=["Design1", "Check1", "Design2", "Check2", "Design3", "Check3", "Design4", "Check4", "Design5", "Check5"],
+    tc_log=("./DPT1/testrun.log", "TC.Stopwatch"),
+    perf_log=("./DPT1/data/pamir-perf.log", "UI.BuildDesign"))
+
+DPT2_TEST = TestSpec(
+    test_label="DPT2",
+    op_labels=["Design1", "Check1", "Design2", "Check2", "Design3", "Check3", "Design4", "Check4", "Design5", "Check5"],
+    tc_log=("./DPT2/testrun.log", "TC.Stopwatch"),
+    perf_log=("./DPT2/data/pamir-perf.log", "UI.BuildDesign"))
+
+BBT3_TEST = TestSpec(
+    test_label="BBT3",
+    op_labels=["Build1", "Build2", "Build3", "Build4", "Build5", "Build6", "Build7", "Build8", "Build9", "Build10"],
+    tc_log=("./BBT3/testrun.log", "TC.Stopwatch"),
+    perf_log=("./BBT3/data/pamir-perf.log", "UI.Build"))
 
 
-def getSpecFromDict(specDict):
-  result = TestSpec()
-  result.tcLogSpec = specDict[KEY_TCLOGSPEC]
-  result.perfLogSpec = specDict[KEY_PERFLOGSPEC]
-  result.testLabel = specDict[KEY_TEST_LABEL]
-  result.operationLabels = specDict[KEY_OPLABEL]
-  return result
-
-
-def collectBasicTestResults(testSpecDict):
-    testSpec = getSpecFromDict(testSpecDict)
-    data = collectDataForOneTest(testSpec.tcLogSpec, testSpec.perfLogSpec)
-    data.testLabel = testSpec.testLabel
-    data.operationLabels = testSpec.operationLabels
+def collect_basic_results(test_spec):
+    data = collectDataForOneTest(test_spec.tcLogSpec, test_spec.perfLogSpec)
+    data.testLabel = test_spec.testLabel
+    data.operationLabels = test_spec.operationLabels
     return data
 
 # ---------------------------------------------------------
@@ -305,23 +290,23 @@ def collectDataFromNavigationTrimTest(folderName):
 
     tcLogFile = "./" + folderName + "/testrun.log"
     perfLogFile = "./" + folderName + "/data/Pamir-perf.log"
-    timingData = TimingData()
+    timing_data = TimingData()
 
-    collectStartupDataForTest(timingData, (tcLogFile,"TC.Stopwatch"))
+    collectStartupDataForTest(timing_data, (tcLogFile,"TC.Stopwatch"))
 
     # collect benchmark results
     data = getDataFromFile((tcLogFile, "BenchmarkResults"));
-    if debug: debugPrintResults(tcLogFile, data, outputfile)
-    timingData.runTimes.append(secondsFromStopwatchLine(data[4]))  # Paint.TotalTime
-    timingData.runTimes.append(secondsFromStopwatchLine(data[6]))  # Refresh.AverageTime
+    if _debug: debugPrintResults(tcLogFile, data, _output_file)
+    timing_data.runTimes.append(secondsFromStopwatchLine(data[4]))  # Paint.TotalTime
+    timing_data.runTimes.append(secondsFromStopwatchLine(data[6]))  # Refresh.AverageTime
 
     # timings for other operations
     data = getDataFromFile((perfLogFile, "Action.Execute\tComplete"))
-    timingData.runTimes.append(searchSecondsFromPerfLine(data, "Toggle automatic framing zone"))
-    timingData.runTimes.append(searchSecondsFromPerfLine(data, "Trim/Extend"))
+    timing_data.runTimes.append(searchSecondsFromPerfLine(data, "Toggle automatic framing zone"))
+    timing_data.runTimes.append(searchSecondsFromPerfLine(data, "Trim/Extend"))
 
-    if debug: debugPrintResults(perfLogFile, data, outputfile)
-    return timingData
+    if _debug: debugPrintResults(perfLogFile, data, _output_file)
+    return timing_data
 
 
 def collectDataFromBenchmarkTest(folderName):
@@ -329,17 +314,17 @@ def collectDataFromBenchmarkTest(folderName):
         return None
 
     tcLogFile = "./" + folderName + "/testrun.log"
-    timingData = TimingData()
+    timing_data = TimingData()
 
-    collectStartupDataForTest(timingData, (tcLogFile,"TC.Stopwatch"))
+    collectStartupDataForTest(timing_data, (tcLogFile,"TC.Stopwatch"))
 
     # collect benchmark results
     data = getDataFromFile((tcLogFile,"BenchmarkResults"));
-    if debug: debugPrintResults(tcLogFile,data,outputfile)
-    timingData.runTimes.append(secondsFromStopwatchLine(data[4]))  # Paint.TotalTime
-    timingData.runTimes.append(secondsFromStopwatchLine(data[6]))  # Refresh.AverageTime
+    if _debug: debugPrintResults(tcLogFile, data, _output_file)
+    timing_data.runTimes.append(secondsFromStopwatchLine(data[4]))  # Paint.TotalTime
+    timing_data.runTimes.append(secondsFromStopwatchLine(data[6]))  # Refresh.AverageTime
 
-    return timingData
+    return timing_data
 
 # ---------------------------------------------------------
 # Main program
@@ -347,16 +332,16 @@ def collectDataFromBenchmarkTest(folderName):
 
 
 def main():
-    with open("baseline-results.txt", mode="w") as outputFile:
-        timing_array = [collectBasicTestResults(dpt1dict),
-                        collectBasicTestResults(dpt2dict),
-                        collectBasicTestResults(bbt3dict)]
+    with open("baseline-results.txt", mode="w") as _output_file:
+        timing_array = [collect_basic_results(DPT1_TEST),
+                        collect_basic_results(DPT2_TEST),
+                        collect_basic_results(BBT3_TEST)]
 
-        outputTimingArrayToFile(timing_array, outputFile)
+        output_timings_to_txt_file(timing_array, _output_file)
 
-    outputTimingArrayToJSonFile(timing_array, "results.json")
+    output_timings_to_json_file(timing_array, "results.json")
 
-    # with open("extra-results.txt",mode="w") as outputFile:
+    # with open("extra-results.txt",mode="w") as _output_file:
     #    timing_array = []
 
     # collect data from extra tests
@@ -382,7 +367,7 @@ def main():
     #    timing_array.append(collectDataFromFrameDesignWithScabTest("T23-FR-SCAB"))
     #    timing_array.append(collectDataFromFullSynchronisationTest("UK-SYNC"))
     #    timing_array.append(collectDataFromSapphireReportTest("UK-SAREP"))
-    #    outputTimingArrayToFile(timing_array)
+    #    output_timings_to_txt_file(timing_array)
 
 if __name__ == "__main__":
     main()
