@@ -187,7 +187,11 @@ def get_testlog_path(test_dir):
     return os.path.join(test_dir, "testrun.log")
 
 
-def get_data_from_file(filename, tag_to_find):
+def get_perf_log_path(test_dir):
+    return os.path.join(test_dir, "data/pamir-perf.log")
+
+
+def get_matching_lines_from_file(filename, tag_to_find):
     """traverses the file stream to get perf data from the tag_to_find elements.
     returns as a list"""
     results = []
@@ -242,7 +246,7 @@ def collect_startup_data(timing_data, test_dir):
     the startup and shutdown."""
 
     filename = get_testlog_path(test_dir)
-    data = get_data_from_file(filename, _SEARCH_STRING_STOPWATCH)
+    data = get_matching_lines_from_file(filename, _SEARCH_STRING_STOPWATCH)
     if _debug:
         debug_print_results(filename, data, _output_file)
 
@@ -264,7 +268,7 @@ def collect_file_size_for_test(timing_data, tc_log_spec):
     """Collect data from the TestComplete Test logs for
     the Pamir file size"""
 
-    data = get_data_from_file(tc_log_spec[0].tc_log_spec[1])
+    data = get_matching_lines_from_file(tc_log_spec[0].tc_log_spec[1])
     if _debug:
         debug_print_results(tc_log_spec[0], data, _output_file)
     if len(data) == 1:
@@ -273,17 +277,18 @@ def collect_file_size_for_test(timing_data, tc_log_spec):
     return
 
 
-def collect_basic_test_data(test_dir, test_label, perf_log_spec):
+def collect_basic_test_data(test_dir, test_label, perf_search_str):
     """Collect data from the TestComplete and Pamir Performance Test logs for
     one test."""
 
     timing_data = TimingData()
+    timing_data.testLabel = test_label
 
     collect_startup_data(timing_data, test_dir)
-
-    data = get_data_from_file(perf_log_spec[0], perf_log_spec[1])
+    perf_filename = get_perf_log_path(test_dir)
+    data = get_matching_lines_from_file(perf_filename, perf_search_str)
     if _debug:
-        debug_print_results(perf_log_spec[0], data, _output_file)
+        debug_print_results(perf_filename, data, _output_file)
 
     for dataRow in data:
         timing_data.runTimes.append(get_total_time_from_perf_line(dataRow))
@@ -296,29 +301,29 @@ def collect_basic_test_data(test_dir, test_label, perf_log_spec):
 
 
 class TestSpec:
-    def __init__(self, perf_log, test_label, op_labels):
-        self.perf_log_spec = perf_log
+    def __init__(self, perf_search_str, test_label, op_labels):
+        self.perf_search_str = perf_search_str
         self.testLabel = test_label
         self.operationLabels = op_labels
 
 DPT1_TEST = TestSpec(
     test_label="DPT1",
     op_labels=["Design1", "Check1", "Design2", "Check2", "Design3", "Check3", "Design4", "Check4", "Design5", "Check5"],
-    perf_log=("./DPT1/data/pamir-perf.log", "UI.BuildDesign"))
+    perf_search_str="UI.BuildDesign")
 
 DPT2_TEST = TestSpec(
     test_label="DPT2",
     op_labels=["Design1", "Check1", "Design2", "Check2", "Design3", "Check3", "Design4", "Check4", "Design5", "Check5"],
-    perf_log=("./DPT2/data/pamir-perf.log", "UI.BuildDesign"))
+    perf_search_str="UI.BuildDesign")
 
 BBT3_TEST = TestSpec(
     test_label="BBT3",
     op_labels=["Build1", "Build2", "Build3", "Build4", "Build5", "Build6", "Build7", "Build8", "Build9", "Build10"],
-    perf_log=("./BBT3/data/pamir-perf.log", "UI.Build"))
+    perf_search_str="UI.Build")
 
 
 def collect_basic_results(test_dir, test_spec):
-    data = collect_basic_test_data(test_dir, test_spec.testLabel, test_spec.perf_log_spec)
+    data = collect_basic_test_data(test_dir, test_spec.testLabel, test_spec.perf_search_str)
     data.testLabel = test_spec.testLabel
     data.operationLabels = test_spec.operationLabels
     return data
@@ -337,23 +342,23 @@ def collect_data_from_nav_trim_test(test_dir, test_label):
     timing_data.operationLabels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
 
     tc_log_file = get_testlog_path(test_dir)
-    perf_log_file = os.path.join(test_dir, "data/Pamir-perf.log")
+    perf_log_file = get_perf_log_path(test_dir)
     collect_startup_data(timing_data, test_label)
 
     # collect benchmark results
-    data = get_data_from_file(tc_log_file, "BenchmarkResults")
+    lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
     if _debug:
-        debug_print_results(tc_log_file, data, _output_file)
-    timing_data.runTimes.append(seconds_from_stopwatch_line(data[4]))  # Paint.TotalTime
-    timing_data.runTimes.append(seconds_from_stopwatch_line(data[6]))  # Refresh.AverageTime
+        debug_print_results(tc_log_file, lines, _output_file)
+    timing_data.runTimes.append(seconds_from_stopwatch_line(lines[4]))  # Paint.TotalTime
+    timing_data.runTimes.append(seconds_from_stopwatch_line(lines[6]))  # Refresh.AverageTime
 
     # timings for other operations
-    data = get_data_from_file(perf_log_file, "Action.Execute\tComplete")
-    timing_data.runTimes.append(search_seconds_from_perf_lines(data, "Toggle automatic framing zone"))
-    timing_data.runTimes.append(search_seconds_from_perf_lines(data, "Trim/Extend"))
+    lines = get_matching_lines_from_file(perf_log_file, "Action.Execute\tComplete")
+    timing_data.runTimes.append(search_seconds_from_perf_lines(lines, "Toggle automatic framing zone"))
+    timing_data.runTimes.append(search_seconds_from_perf_lines(lines, "Trim/Extend"))
 
     if _debug: 
-        debug_print_results(perf_log_file, data, _output_file)
+        debug_print_results(perf_log_file, lines, _output_file)
     return timing_data
 
 
@@ -367,7 +372,7 @@ def collect_benchmark_data(test_dir, test_label):
 
     # collect benchmark results
     tc_log_file = get_testlog_path(test_dir)
-    data = get_data_from_file(tc_log_file, "BenchmarkResults")
+    data = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
     if _debug:
         debug_print_results(tc_log_file, data, _output_file)
 
