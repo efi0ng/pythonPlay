@@ -343,7 +343,7 @@ def collect_data_from_nav_trim_test(test_dir, test_label):
 
     tc_log_file = get_testlog_path(test_dir)
     perf_log_file = get_perf_log_path(test_dir)
-    collect_startup_data(timing_data, test_label)
+    collect_startup_data(timing_data, test_dir)
 
     # collect benchmark results
     lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
@@ -367,6 +367,7 @@ def collect_benchmark_data(test_dir, test_label):
         return None
 
     timing_data = TimingData()
+    timing_data.testLabel = test_label
 
     collect_startup_data(timing_data, test_dir)
 
@@ -390,9 +391,8 @@ def test_dir_from_label(base_path, test_label):
     return os.path.join(base_path, test_label)
 
 
-def main():
+def main(base_path):
     global _output_file
-    base_path = "./"
     with open("baseline-results.txt", mode="w") as _output_file:
         timing_array = [collect_basic_results(test_dir_from_label(base_path, DPT1_TEST.testLabel), DPT1_TEST),
                         collect_basic_results(test_dir_from_label(base_path, DPT2_TEST.testLabel), DPT2_TEST),
@@ -433,4 +433,8 @@ def main():
     #    timing_array.append(collectDataFromSapphireReportTest("UK-SAREP"))
 
 if __name__ == "__main__":
-    main()
+    _base_path = os.getcwd()
+    if len(sys.argv) > 1:
+        _base_path = sys.argv[1]
+
+    main(_base_path)
