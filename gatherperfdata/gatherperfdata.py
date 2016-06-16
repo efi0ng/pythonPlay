@@ -144,7 +144,7 @@ class TimingData:
         print("", file=outfile)  # new line to create a gap for next result
 
 
-def output_timings_to_json_file(timing_array, fileName):
+def output_timings_to_json_file(timing_array, filename):
     root_json_dict = {}
 
     for td in timing_array:
@@ -154,7 +154,7 @@ def output_timings_to_json_file(timing_array, fileName):
         test_json_dict = td.to_json_dict()
         root_json_dict[td.testLabel] = test_json_dict
 
-    with open(fileName, mode="w") as jsonFile:
+    with open(filename, mode="w") as jsonFile:
         json.dump(root_json_dict, jsonFile, indent=3)
 
 
@@ -229,7 +229,7 @@ def seconds_from_perf_line(line):
 
 def search_seconds_from_perf_lines(lines, search_string):
     for line in lines:
-        if line.find(search_string) >= 0 :
+        if line.find(search_string) >= 0:
             return seconds_from_perf_line(line)
 
     return 0.0
@@ -264,15 +264,15 @@ def megabytes_from_file_size_line(line):
     return float(kilo_str.strip())/1024.0
 
 
-def collect_file_size_for_test(timing_data, tc_log_spec):
+def collect_file_size_for_test(timing_data, filename, search_string):
     """Collect data from the TestComplete Test logs for
     the Pamir file size"""
 
-    data = get_matching_lines_from_file(tc_log_spec[0].tc_log_spec[1])
+    lines = get_matching_lines_from_file(filename, search_string)
     if _debug:
-        debug_print_results(tc_log_spec[0], data, _output_file)
-    if len(data) == 1:
-        timing_data.fileSize = megabytes_from_file_size_line(data[0])
+        debug_print_results(filename, lines, _output_file)
+    if len(lines) > 0:
+        timing_data.fileSize = megabytes_from_file_size_line(lines[0])
 
     return
 
