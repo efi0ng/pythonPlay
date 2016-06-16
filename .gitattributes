@@ -1,6 +1,9 @@
 *.pde text=auto
 
 
+
 *.py text=auto
 
 
+
+*.xml text=auto
