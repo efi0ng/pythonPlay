@@ -393,13 +393,13 @@ def test_dir_from_label(base_path, test_label):
 
 def main(base_path):
     global _output_file
-    with open("baseline-results.txt", mode="w") as _output_file:
+    with open(os.path.join(base_path, "baseline-results.txt"), mode="w") as _output_file:
         timing_array = [collect_basic_results(test_dir_from_label(base_path, DPT1_TEST.testLabel), DPT1_TEST),
                         collect_basic_results(test_dir_from_label(base_path, DPT2_TEST.testLabel), DPT2_TEST),
                         collect_basic_results(test_dir_from_label(base_path, BBT3_TEST.testLabel), BBT3_TEST)]
         output_timings_to_txt_file(timing_array, _output_file)
 
-    with open("extra-results.txt", mode="w") as _output_file:
+    with open(os.path.join(base_path, "extra-results.txt"), mode="w") as _output_file:
         timing_array2 = [collect_data_from_nav_trim_test(test_dir_from_label(base_path, "NTT4"), "NTT4")]
         output_timings_to_txt_file(timing_array2, _output_file)
 
@@ -407,7 +407,7 @@ def main(base_path):
         if td is not None:
             timing_array.append(td)
 
-    output_timings_to_json_file(timing_array, "results.json")
+    output_timings_to_json_file(timing_array, os.path.join(base_path, "results.json"))
 
     # collect data from extra tests
     #    timing_array.append(collectDataFromMonoToDuoTest("MDT5"))
