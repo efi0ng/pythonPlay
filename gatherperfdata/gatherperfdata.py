@@ -53,7 +53,7 @@ TestResult
     N/A: testId: inferred by hierarchy
 
 TestOperationResult
-    TODO: startDateTime: only useful for diagonostics. Might skip?
+    TODO: startDateTime: only useful for diagnostics. Might skip?
     duration (ms)
     ---
     IGNORED: status : assume a pass
@@ -69,58 +69,73 @@ TestOperationResult
 # ---------------------------------------------------------
 
 
-def sec_to_msec(secs):
+def sec_to_ms(secs):
     return int(secs*1000)
 
 
+def ms_to_sec(ms):
+    return float(ms/1000.0)
+
+
+class OpLabels:
+    """Holds all the magic strings for operation labels"""
+    TO_LOGIN = "ToLogin"
+    TO_MAIN_FORM = "ToMainForm"
+    PAMIR_SHUTDOWN = "PamirShutdown"
+    SELECT_METALWORK = "SelectMetalwork"
+    SAPPHIRE_REPORT = "SapphireReport"
+    TWENTY20_SHUTDOWN = "2020Shutdown"
+    SAPPHIRE_SHUTDOWN = "SapphireShutdown"
+    FILE_SIZE = "FileSize"
+
+
 class TimingData:
-    def __init__(self):
-        self.startToLogin = 0.0
-        self.loginToMainForm = 0.0
-        self.pamirShutdown = None
+    """Collected timing information for a test"""
+    def __init__(self, test_label):
         self.selectMetalwork = None
         self.fileSize = None
         self.sapphireReport = None
         self.sapphireShutdown = None
         self.twenty20Shutdown = None
+        self.op_results = {}
         self.runTimes = []
         # for JSon support
-        self.testLabel = None
+        self.testLabel = test_label
         self.operationLabels = []
 
     def to_json_dict(self):
-        test_json_dict = dict(ToLogin=sec_to_msec(self.startToLogin),
-                              ToMainForm=sec_to_msec(self.loginToMainForm))
+        test_json_dict = {}
+        for result in self.op_results.values():
+            test_json_dict[result.label] = result.duration
 
         if self.selectMetalwork is not None:
-            test_json_dict['SelectMetalwork'] = sec_to_msec(self.selectMetalwork)
+            test_json_dict[OpLabels.SELECT_METALWORK] = sec_to_ms(self.selectMetalwork)
 
         if self.sapphireReport is not None:
-            test_json_dict['SapphireReport'] = sec_to_msec(self.sapphireReport)
+            test_json_dict[OpLabels.SAPPHIRE_REPORT] = sec_to_ms(self.sapphireReport)
 
         if self.twenty20Shutdown is not None:
-            test_json_dict['2020Shutdown'] = sec_to_msec(self.twenty20Shutdown)
-
-        if self.pamirShutdown is not None:
-            test_json_dict['PamirShutdown'] = sec_to_msec(self.pamirShutdown)
+            test_json_dict[OpLabels.TWENTY20_SHUTDOWN] = sec_to_ms(self.twenty20Shutdown)
 
         if self.sapphireShutdown is not None:
-            test_json_dict['SapphireShutdown'] = sec_to_msec(self.sapphireShutdown)
+            test_json_dict[OpLabels.SAPPHIRE_SHUTDOWN] = sec_to_ms(self.sapphireShutdown)
 
         if self.fileSize is not None:
-            test_json_dict['FileSize'] = self.fileSize
+            test_json_dict[OpLabels.FILE_SIZE] = self.fileSize
 
         if len(self.runTimes) != 0:
             for key, runTime in enumerate(self.runTimes):
-                test_json_dict[self.operationLabels[key]] = sec_to_msec(runTime)
+                test_json_dict[self.operationLabels[key]] = sec_to_ms(runTime)
 
         return test_json_dict
 
     def to_file(self, outfile):
-        print("%.3f\n%.3f" % (self.startToLogin, self.loginToMainForm), file=outfile)
+        to_login = self.op_results[OpLabels.TO_LOGIN].to_seconds()
+        to_main_form = self.op_results[OpLabels.TO_MAIN_FORM].to_seconds()
+        print("%.3f\n%.3f" % (to_login, to_main_form), file=outfile)
 
         if self.selectMetalwork is not None:
-            print ("%.3f" % self.selectMetalwork, file=outfile)  # print the time of selected Metalwork
+            print("%.3f" % self.selectMetalwork, file=outfile)  # print the time of selected Metalwork
 
         if len(self.runTimes) != 0:
             for runTime in self.runTimes:
@@ -129,8 +144,8 @@ class TimingData:
         if self.sapphireReport is not None:
             print("%.3f" % self.sapphireReport, file=outfile)  # print the time of generating Sapphire Report
 
-        if self.pamirShutdown is not None:
-            print("%.3f" % self.pamirShutdown, file=outfile)  # print the time of Pamir Shutdown
+        if OpLabels.PAMIR_SHUTDOWN in self.op_results:
+            print("%.3f" % self.op_results[OpLabels.PAMIR_SHUTDOWN].to_seconds(), file=outfile)
 
         if self.sapphireShutdown is not None:
             print("%.3f" % self.sapphireShutdown, file=outfile)  # print the time of Sapphire Report Viewer Shutdown
@@ -142,6 +157,17 @@ class TimingData:
             print("%.3f" % self.fileSize, file=outfile)  # print file size of the saved Pamir job
 
         print("", file=outfile)  # new line to create a gap for next result
+
+
+class OpResult:
+    """Result of an operation"""
+    def __init__(self, label: str, duration: int, source_line: str = "") -> object:
+        self.label = label
+        self.duration = duration
+        self.source_line = source_line
+
+    def to_seconds(self):
+        return self.duration/1000.0
 
 
 def output_timings_to_json_file(timing_array, filename):
@@ -203,7 +229,7 @@ def get_matching_lines_from_file(filename, tag_to_find):
         while line:
             line = line.strip()
             if line.find(tag_to_find) >= 0:
-                # remove the seconds unit suffix
+                # remove the to_seconds unit suffix
                 line = line.replace("s ", " ")
                 results.append(line)
 
@@ -217,9 +243,13 @@ def get_matching_lines_from_file(filename, tag_to_find):
     return results
 
 
-def seconds_from_stopwatch_line(line):
+def milliseconds_from_stopwatch_line(line):
     (a, b, milli_str) = line.rpartition(",")
-    return float(milli_str.strip())/1000.0
+    return int(float(milli_str.strip()))
+
+
+def seconds_from_stopwatch_line(line):
+    return milliseconds_from_stopwatch_line(line)/1000.0
 
 
 def seconds_from_perf_line(line):
@@ -242,19 +272,27 @@ def get_total_time_from_perf_line(perf_line):
 
 
 def collect_startup_data(timing_data, test_dir):
-    """Collect data from the TestComplete Test logs for
+    """Collect timing from the TestComplete Test logs for
     the startup and shutdown."""
 
     filename = get_testlog_path(test_dir)
-    data = get_matching_lines_from_file(filename, _SEARCH_STRING_STOPWATCH)
-    if _debug:
-        debug_print_results(filename, data, _output_file)
+    lines = get_matching_lines_from_file(filename, _SEARCH_STRING_STOPWATCH)
 
-    if len(data) >= 2:
-        timing_data.startToLogin = seconds_from_stopwatch_line(data[0])
-        timing_data.loginToMainForm = seconds_from_stopwatch_line(data[1])
-    if len(data) == 3:
-        timing_data.pamirShutdown = seconds_from_stopwatch_line(data[2])
+    if len(lines) >= 2:
+        timing_data.op_results[OpLabels.TO_LOGIN] = OpResult(
+            OpLabels.TO_LOGIN,
+            milliseconds_from_stopwatch_line(lines[0]),
+            lines[0])
+        timing_data.op_results[OpLabels.TO_MAIN_FORM] = OpResult(
+            OpLabels.TO_MAIN_FORM,
+            milliseconds_from_stopwatch_line(lines[1]),
+            lines[1])
+
+    if len(lines) == 3:
+        timing_data.op_results[OpLabels.PAMIR_SHUTDOWN] = OpResult(
+            OpLabels.PAMIR_SHUTDOWN,
+            milliseconds_from_stopwatch_line(lines[2]),
+            lines[2])
 
     return
 
@@ -281,8 +319,7 @@ def collect_basic_test_data(test_dir, test_label, perf_search_str):
     """Collect data from the TestComplete and Pamir Performance Test logs for
     one test."""
 
-    timing_data = TimingData()
-    timing_data.testLabel = test_label
+    timing_data = TimingData(test_label)
 
     collect_startup_data(timing_data, test_dir)
     perf_filename = get_perf_log_path(test_dir)
@@ -337,8 +374,7 @@ def collect_data_from_nav_trim_test(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
-    timing_data = TimingData()
-    timing_data.testLabel = test_label
+    timing_data = TimingData(test_label)
     timing_data.operationLabels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
 
     tc_log_file = get_testlog_path(test_dir)
@@ -366,8 +402,7 @@ def collect_benchmark_data(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
-    timing_data = TimingData()
-    timing_data.testLabel = test_label
+    timing_data = TimingData(test_label)
 
     collect_startup_data(timing_data, test_dir)
 
