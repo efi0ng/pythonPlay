@@ -89,11 +89,26 @@ class OpLabels:
     FILE_SIZE = "FileSize"
 
 
+class OpResult:
+    """Result of an operation"""
+    def __init__(self, label: str, value: int, source_line: str = "") -> object:
+        self.label = label
+        self.value = value
+        self.source_line = source_line
+
+    def to_seconds(self):
+        """Assuming value is a duration in ms, returns value in seconds."""
+        return self.value/1000.0
+
+    def to_megabytes(self):
+        """Assuming value is kilobytes, return value in megabytes"""
+        return self.value/1024.0
+
+
 class TimingData:
     """Collected timing information for a test"""
-    def __init__(self, test_label):
+    def __init__(self, test_label: str):
         self.selectMetalwork = None
-        self.fileSize = None
         self.sapphireReport = None
         self.sapphireShutdown = None
         self.twenty20Shutdown = None
@@ -103,10 +118,13 @@ class TimingData:
         self.testLabel = test_label
         self.operationLabels = []
 
+    def add_result(self, op_result: OpResult):
+        self.op_results[op_result.label] = op_result
+
     def to_json_dict(self):
         test_json_dict = {}
         for result in self.op_results.values():
-            test_json_dict[result.label] = result.duration
+            test_json_dict[result.label] = result.value
 
         if self.selectMetalwork is not None:
             test_json_dict[OpLabels.SELECT_METALWORK] = sec_to_ms(self.selectMetalwork)
@@ -119,9 +137,6 @@ class TimingData:
 
         if self.sapphireShutdown is not None:
             test_json_dict[OpLabels.SAPPHIRE_SHUTDOWN] = sec_to_ms(self.sapphireShutdown)
-
-        if self.fileSize is not None:
-            test_json_dict[OpLabels.FILE_SIZE] = self.fileSize
 
         if len(self.runTimes) != 0:
             for key, runTime in enumerate(self.runTimes):
@@ -153,21 +168,10 @@ class TimingData:
         if self.twenty20Shutdown is not None:
             print("%.3f" % self.twenty20Shutdown, file=outfile)
 
-        if self.fileSize is not None:
-            print("%.3f" % self.fileSize, file=outfile)  # print file size of the saved Pamir job
+        if OpLabels.FILE_SIZE in self.op_results:
+            print("%.3f" % self.op_results[OpLabels.FILE_SIZE].to_megabytes(), file=outfile)
 
         print("", file=outfile)  # new line to create a gap for next result
-
-
-class OpResult:
-    """Result of an operation"""
-    def __init__(self, label: str, duration: int, source_line: str = "") -> object:
-        self.label = label
-        self.duration = duration
-        self.source_line = source_line
-
-    def to_seconds(self):
-        return self.duration/1000.0
 
 
 def output_timings_to_json_file(timing_array, filename):
@@ -181,7 +185,7 @@ def output_timings_to_json_file(timing_array, filename):
         root_json_dict[td.testLabel] = test_json_dict
 
     with open(filename, mode="w") as jsonFile:
-        json.dump(root_json_dict, jsonFile, indent=3)
+        json.dump(root_json_dict, jsonFile, indent=3, sort_keys=True)
 
 
 def output_timings_to_txt_file(timing_array, outfile):
@@ -279,27 +283,27 @@ def collect_startup_data(timing_data, test_dir):
     lines = get_matching_lines_from_file(filename, _SEARCH_STRING_STOPWATCH)
 
     if len(lines) >= 2:
-        timing_data.op_results[OpLabels.TO_LOGIN] = OpResult(
+        timing_data.add_result(OpResult(
             OpLabels.TO_LOGIN,
             milliseconds_from_stopwatch_line(lines[0]),
-            lines[0])
-        timing_data.op_results[OpLabels.TO_MAIN_FORM] = OpResult(
+            lines[0]))
+        timing_data.add_result(OpResult(
             OpLabels.TO_MAIN_FORM,
             milliseconds_from_stopwatch_line(lines[1]),
-            lines[1])
+            lines[1]))
 
     if len(lines) == 3:
-        timing_data.op_results[OpLabels.PAMIR_SHUTDOWN] = OpResult(
+        timing_data.add_result(OpResult(
             OpLabels.PAMIR_SHUTDOWN,
             milliseconds_from_stopwatch_line(lines[2]),
-            lines[2])
+            lines[2]))
 
     return
 
 
-def megabytes_from_file_size_line(line):
+def kilobytes_from_file_size_line(line):
     (a, b, kilo_str) = line.rpartition(",")
-    return float(kilo_str.strip())/1024.0
+    return int(float(kilo_str.strip()))
 
 
 def collect_file_size_for_test(timing_data, filename, search_string):
@@ -310,7 +314,9 @@ def collect_file_size_for_test(timing_data, filename, search_string):
     if _debug:
         debug_print_results(filename, lines, _output_file)
     if len(lines) > 0:
-        timing_data.fileSize = megabytes_from_file_size_line(lines[0])
+        file_size = kilobytes_from_file_size_line(lines[0])
+        result = OpResult(OpLabels.FILE_SIZE, file_size, lines[0])
+        timing_data.add_result(result)
 
     return
 
@@ -417,6 +423,29 @@ def collect_benchmark_data(test_dir, test_label):
 
     return timing_data
 
+
+def collect_fr_filesize_data(test_dir, test_label):
+    if not os.path.exists(test_dir):
+        return None
+
+    timing_data = TimingData(test_label)
+    timing_data.operationLabels = ["BuildDesign"]
+
+    tc_log_file = get_testlog_path(test_dir)
+    perf_log_file = get_perf_log_path(test_dir)
+    collect_startup_data(timing_data, test_dir)
+
+    # collect the total time of designing all frames from "Pamir-perf.log"
+    lines = get_matching_lines_from_file(perf_log_file, "BuildDesign")
+    for line in lines:
+        timing_data.runTimes.append(get_total_time_from_perf_line(line))
+
+    # collect file size of the saved Pamir job
+    collect_file_size_for_test(timing_data, tc_log_file, "Pamir job:")
+
+    return timing_data
+
+
 # ---------------------------------------------------------
 # Main program
 # ---------------------------------------------------------
@@ -435,7 +464,11 @@ def main(base_path):
         output_timings_to_txt_file(timing_array, _output_file)
 
     with open(os.path.join(base_path, "extra-results.txt"), mode="w") as _output_file:
-        timing_array2 = [collect_data_from_nav_trim_test(test_dir_from_label(base_path, "NTT4"), "NTT4")]
+        timing_array2 = [collect_data_from_nav_trim_test(test_dir_from_label(base_path, "NTT4"), "NTT4"),
+                         collect_fr_filesize_data(test_dir_from_label(base_path, "FR-MST18"), "FR-MST18"),
+                         collect_fr_filesize_data(test_dir_from_label(base_path, "FR-SST19"), "FR-SST19"),
+                         collect_fr_filesize_data(test_dir_from_label(base_path, "FR-DST20"), "FR-DST20"),
+                         ]
         output_timings_to_txt_file(timing_array2, _output_file)
 
     for td in timing_array2:
@@ -458,9 +491,6 @@ def main(base_path):
     #    timing_array.append(collectDataFromOutputPDFTests("UK_LayoutPDF14"))
     #    timing_array.append(collectDataFromUK_DisableHangerHipToHipTest("UK-DISH15"))
     #    timing_array.append(collectDataFromUK_EnableHangerHipToHipTest("UK-ENAH16"))
-    #    timing_array.append(collectDataFromFR_FileSizeTest("FR-MST18"))
-    #    timing_array.append(collectDataFromFR_FileSizeTest("FR-SST19"))
-    #    timing_array.append(collectDataFromFR_FileSizeTest("FR-DST20"))
     #    timing_array.append(collectDataFromUK_OpenAndSaveTest("UK-OST21"))
     #    timing_array.append(collectDataFromMultipleDesignCasesTest("T22-FR-MDC"))
     #    timing_array.append(collectDataFromFrameDesignWithScabTest("T23-FR-SCAB"))
