@@ -75,11 +75,31 @@ if __name__ == "__main__":
     _min_days_old = _DEFAULT_MIN_DAYS_OLD
 
     if len(sys.argv) > 1:
-        _zip_folder = sys.argv[1]
+        if sys.argv[1] == "-h":
+            print("zip-to-archive [source_folder] [dest_folder] [minimum_age]")
+            exit()
+
+        _requested_path = sys.argv[1]
+        if os.path.exists(_requested_path):
+            os.chdir(_requested_path)
+
+    else:
+        _default_path = os.path.dirname(__file__)
+        if _default_path != "":
+            os.chdir(_default_path)
+
+    # avoid dangerous current working directory
+    _cwd = os.getcwd()
+    if "windows" in _cwd:
+        print("CWD contains the word Windows. Stopping now to avoid potentially serious side effects.")
+        exit()
 
     if len(sys.argv) > 2:
-        _min_days_old = int(sys.argv[2])
+        _zip_folder = sys.argv[2]
 
-    print("zip folder: {}\nmin days old: {}".format(_zip_folder, _min_days_old))
+    if len(sys.argv) > 3:
+        _min_days_old = int(sys.argv[3])
+
+    print("working folder: {}\nzip folder: {}\nmin days old: {}".format(_cwd, _zip_folder, _min_days_old))
     main(_zip_folder, _min_days_old)
     print("All done!")
