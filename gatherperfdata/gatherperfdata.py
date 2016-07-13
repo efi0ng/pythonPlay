@@ -65,16 +65,94 @@ TestOperationResult
 '''
 
 # ---------------------------------------------------------
-# TimingData and timing array output functions
+# General parsing and conversion functions
 # ---------------------------------------------------------
+
+
+def debug_print_results(filename, data, outfile=sys.stdout):
+    print("[%s]" % filename, file=outfile)
+
+    for line in data:
+        print(line, file=outfile)
+
+
+def get_testlog_path(test_dir):
+    return os.path.join(test_dir, "testrun.log")
+
+
+def get_perf_log_path(test_dir):
+    return os.path.join(test_dir, "data/pamir-perf.log")
+
+
+def get_matching_lines_from_file(filename, tag_to_find):
+    """traverses the file stream to get perf data from the tag_to_find elements.
+    returns as a list"""
+    results = []
+    file = None
+    try:
+        file = open(filename, mode="r")
+
+        line = file.readline()
+        while line:
+            line = line.strip()
+            if line.find(tag_to_find) >= 0:
+                # remove the to_seconds unit suffix
+                line = line.replace("s ", " ")
+                results.append(line)
+
+            line = file.readline()
+    except IOError:
+        pass
+    finally:
+        if file:
+            file.close()
+
+    return results
+
+
+def get_total_time_from_perf_line(perf_line):
+    (a, sep, time_plus_splits) = perf_line.rpartition(":")
+    (time_str, sep, b) = time_plus_splits.partition("(")
+    return float(time_str)
+
+
+def kilobytes_from_file_size_line(line):
+    (a, b, kilo_str) = line.rpartition(",")
+    return int(float(kilo_str.strip()))
+
+
+def milliseconds_from_stopwatch_line(line):
+    (a, b, milli_str) = line.rpartition(",")
+    return int(float(milli_str.strip()))
+
+
+def ms_to_sec(ms):
+    return float(ms/1000.0)
 
 
 def sec_to_ms(secs):
     return int(secs*1000)
 
 
-def ms_to_sec(ms):
-    return float(ms/1000.0)
+def seconds_from_stopwatch_line(line):
+    return milliseconds_from_stopwatch_line(line)/1000.0
+
+
+def seconds_from_perf_line(line):
+    parts = line.split("\t")
+    return float(parts[4])/1000.0
+
+
+def search_seconds_from_perf_lines(lines, search_string):
+    for line in lines:
+        if line.find(search_string) >= 0:
+            return seconds_from_perf_line(line)
+
+    return 0.0
+
+# ---------------------------------------------------------
+# Model classes inc. TimingData
+# ---------------------------------------------------------
 
 
 class OpLabels:
@@ -206,75 +284,6 @@ def output_timings_to_txt_file(timing_array, outfile):
 _SEARCH_STRING_STOPWATCH = "TC.Stopwatch"
 
 
-def debug_print_results(filename, data, outfile=sys.stdout):
-    print("[%s]" % filename, file=outfile)
-
-    for line in data:
-        print(line, file=outfile)
-
-
-def get_testlog_path(test_dir):
-    return os.path.join(test_dir, "testrun.log")
-
-
-def get_perf_log_path(test_dir):
-    return os.path.join(test_dir, "data/pamir-perf.log")
-
-
-def get_matching_lines_from_file(filename, tag_to_find):
-    """traverses the file stream to get perf data from the tag_to_find elements.
-    returns as a list"""
-    results = []
-    file = None
-    try:
-        file = open(filename, mode="r")
-
-        line = file.readline()
-        while line:
-            line = line.strip()
-            if line.find(tag_to_find) >= 0:
-                # remove the to_seconds unit suffix
-                line = line.replace("s ", " ")
-                results.append(line)
-
-            line = file.readline()
-    except IOError:
-        pass
-    finally:
-        if file:
-            file.close()
-
-    return results
-
-
-def milliseconds_from_stopwatch_line(line):
-    (a, b, milli_str) = line.rpartition(",")
-    return int(float(milli_str.strip()))
-
-
-def seconds_from_stopwatch_line(line):
-    return milliseconds_from_stopwatch_line(line)/1000.0
-
-
-def seconds_from_perf_line(line):
-    parts = line.split("\t")
-    return float(parts[4])/1000.0
-
-
-def search_seconds_from_perf_lines(lines, search_string):
-    for line in lines:
-        if line.find(search_string) >= 0:
-            return seconds_from_perf_line(line)
-
-    return 0.0
-
-
-def get_total_time_from_perf_line(perf_line):
-    (a, sep, time_plus_splits) = perf_line.rpartition(":")
-    (time_str, sep, b) = time_plus_splits.partition("(")
-    return float(time_str)
-
-
 def collect_startup_data(timing_data, test_dir):
     """Collect timing from the TestComplete Test logs for
     the startup and shutdown."""
@@ -299,11 +308,6 @@ def collect_startup_data(timing_data, test_dir):
             lines[2]))
 
     return
-
-
-def kilobytes_from_file_size_line(line):
-    (a, b, kilo_str) = line.rpartition(",")
-    return int(float(kilo_str.strip()))
 
 
 def collect_file_size_for_test(timing_data, filename, search_string):
