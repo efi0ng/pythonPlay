@@ -3,6 +3,9 @@
 import sys
 import os.path
 import json
+from re import search
+#from time import datetime
+
 
 __author__ = 'JSmith' and 'SZhang'
 
@@ -84,6 +87,10 @@ def get_perf_log_path(test_dir):
     return os.path.join(test_dir, "data/pamir-perf.log")
 
 
+def get_pamir_log_path(test_dir):
+    return os.path.join(test_dir, "data/pamir.log")
+
+
 def get_matching_lines_from_file(filename, tag_to_find):
     """traverses the file stream to get perf data from the tag_to_find elements.
     returns as a list"""
@@ -108,6 +115,47 @@ def get_matching_lines_from_file(filename, tag_to_find):
             file.close()
 
     return results
+
+
+# We want to capture timestamps from lines like:
+#   2016-05-26 12:28:19,929 Serializer.ArchiveTypeResolver INFO : Processing assemblies on thread 5
+_TIMESTAMP_REGEX = r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})"
+
+
+def collect_test_start_and_duration_from_pamirlog(test_dir):
+    """Use first and last long entry in the Pamir log as a guide for when test started and how long it ran.
+    Return tuple (start, duration) where start is a datetime and duration is milliseconds (integer).
+    If collection fails, start_time may be set to file date time or current time but duration is always set to 0."""
+    log_file = get_pamir_log_path(test_dir)
+
+    file = None
+    duration = 0
+    start = 0
+    first_valid_line = None
+    last_valid_line = None
+    try:
+        file = open(log_file, mode="r")
+
+        line = file.readline()
+        while line:
+            # decide if current line is worthy
+            match = search(_TIMESTAMP_REGEX, line)
+            if match:
+                if first_valid_line is None:
+                    first_valid_line = match.group(1)
+                else:
+                    last_valid_line = match.group(1)
+            line = file.readline()
+
+        print("Search results were: {} {}".format(first_valid_line, last_valid_line))
+    except IOError:
+        duration = 0
+        pass
+    finally:
+        if file:
+            file.close()
+
+    return start, duration
 
 
 def get_total_time_from_perf_line(perf_line):
