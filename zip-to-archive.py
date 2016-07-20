@@ -62,7 +62,7 @@ def main(zip_folder, min_days_old):
                   .format(d, calc_age_from_modtime(modtime), min_days_old))
             continue
 
-        zip_command = r'7z a "{0}" ".\{1}\*" -sdel -bso0'.format(archive_name, d)
+        zip_command = r'c:\Program Files\7-Zip\7z.exe a "{0}" ".\{1}\*" -sdel -bso0'.format(archive_name, d)
         result = run(zip_command)
 
         if result.returncode == 0 and os.path.exists(archive_name):
