@@ -56,9 +56,6 @@ TestResult
     N/A: testId: inferred by hierarchy
 
 TestOperationResult
-    TODO: startDateTime: only useful for diagnostics. Might skip?
-    duration (ms)
-    ---
     IGNORED: status : assume a pass
     IGNORED: varianceFromBaseline: can be supplied by the server
     N/A: testOpResultId: supplied by the server
@@ -199,7 +196,7 @@ def search_seconds_from_perf_lines(lines, search_string):
     return 0.0
 
 # ---------------------------------------------------------
-# Model classes inc. TimingData
+# Model classes inc. TestResult
 # ---------------------------------------------------------
 
 
@@ -217,7 +214,7 @@ class OpLabels:
 
 class OpResult:
     """Result of an operation"""
-    def __init__(self, label: str, value: int, source_line: str = "") -> object:
+    def __init__(self, label: str, value: int, source_line: str = ""):
         self.label = label
         self.value = value
         self.source_line = source_line
@@ -230,8 +227,16 @@ class OpResult:
         """Assuming value is kilobytes, return value in megabytes"""
         return self.value/1024.0
 
+    def to_json_object(self):
+        """Convert this OpResult into an object tailored for json serialization."""
+        json_dict = {
+            "label": self.label,
+            "value": self.value,
+        }
+        return json_dict
 
-class TimingData:
+
+class TestResult:
     """Collected timing information for a test"""
     def __init__(self, test_label: str):
         self.selectMetalwork = None
@@ -241,34 +246,46 @@ class TimingData:
         self.op_results = {}
         self.runTimes = []
         # for JSon support
-        self.testLabel = test_label
-        self.operationLabels = []
+        self.label = test_label
+        self.op_labels = []
 
     def add_result(self, op_result: OpResult):
         self.op_results[op_result.label] = op_result
 
-    def to_json_dict(self):
-        test_json_dict = {}
-        for result in self.op_results.values():
-            test_json_dict[result.label] = result.value
+    def to_json_object(self):
+        """Convert this TestResult into an object tailored for json serialization."""
+        json_op_results = []
+
+        json_dict = {
+            "label": self.label,
+            "operationResults": json_op_results,
+        }
+
+        for op in self.op_results.values():
+            json_op_results.append(op.to_json_object())
 
         if self.selectMetalwork is not None:
-            test_json_dict[OpLabels.SELECT_METALWORK] = sec_to_ms(self.selectMetalwork)
+            op = OpResult(OpLabels.SELECT_METALWORK, sec_to_ms(self.selectMetalwork))
+            json_op_results.append(op.to_json_object())
 
         if self.sapphireReport is not None:
-            test_json_dict[OpLabels.SAPPHIRE_REPORT] = sec_to_ms(self.sapphireReport)
+            op = OpResult(OpLabels.SAPPHIRE_REPORT, sec_to_ms(self.sapphireReport))
+            json_op_results.append(op.to_json_object())
 
         if self.twenty20Shutdown is not None:
-            test_json_dict[OpLabels.TWENTY20_SHUTDOWN] = sec_to_ms(self.twenty20Shutdown)
+            op = OpResult(OpLabels.TWENTY20_SHUTDOWN, self.twenty20Shutdown)
+            json_op_results.append(op.to_json_object())
 
         if self.sapphireShutdown is not None:
-            test_json_dict[OpLabels.SAPPHIRE_SHUTDOWN] = sec_to_ms(self.sapphireShutdown)
+            op = OpResult(OpLabels.SAPPHIRE_SHUTDOWN, sec_to_ms(self.sapphireShutdown))
+            json_op_results.append(op.to_json_object())
 
         if len(self.runTimes) != 0:
             for key, runTime in enumerate(self.runTimes):
-                test_json_dict[self.operationLabels[key]] = sec_to_ms(runTime)
+                op = OpResult(self.op_labels[key], sec_to_ms(runTime))
+                json_op_results.append(op.to_json_object())
 
-        return test_json_dict
+        return json_dict
 
     def to_file(self, outfile):
         to_login = self.op_results[OpLabels.TO_LOGIN].to_seconds()
@@ -301,17 +318,16 @@ class TimingData:
 
 
 def output_timings_to_json_file(timing_array, filename):
-    root_json_dict = {}
+    root_object = []
 
     for td in timing_array:
         if td is None:
             continue
 
-        test_json_dict = td.to_json_dict()
-        root_json_dict[td.testLabel] = test_json_dict
+        root_object.append(td.to_json_object())
 
     with open(filename, mode="w") as jsonFile:
-        json.dump(root_json_dict, jsonFile, indent=3, sort_keys=True)
+        json.dump(root_object, jsonFile, indent=3, sort_keys=True)
 
 
 def output_timings_to_txt_file(timing_array, outfile):
@@ -377,7 +393,7 @@ def collect_basic_test_data(test_dir, test_label, perf_search_str):
     """Collect data from the TestComplete and Pamir Performance Test logs for
     one test."""
 
-    timing_data = TimingData(test_label)
+    timing_data = TestResult(test_label)
 
     collect_startup_data(timing_data, test_dir)
     perf_filename = get_perf_log_path(test_dir)
@@ -398,8 +414,8 @@ def collect_basic_test_data(test_dir, test_label, perf_search_str):
 class TestSpec:
     def __init__(self, perf_search_str, test_label, op_labels):
         self.perf_search_str = perf_search_str
-        self.testLabel = test_label
-        self.operationLabels = op_labels
+        self.test_label = test_label
+        self.op_labels = op_labels
 
 DPT1_TEST = TestSpec(
     test_label="DPT1",
@@ -418,9 +434,9 @@ BBT3_TEST = TestSpec(
 
 
 def collect_basic_results(test_dir, test_spec):
-    data = collect_basic_test_data(test_dir, test_spec.testLabel, test_spec.perf_search_str)
-    data.testLabel = test_spec.testLabel
-    data.operationLabels = test_spec.operationLabels
+    data = collect_basic_test_data(test_dir, test_spec.test_label, test_spec.perf_search_str)
+    data.label = test_spec.test_label
+    data.op_labels = test_spec.op_labels
     return data
 
 # ---------------------------------------------------------
@@ -432,8 +448,8 @@ def collect_data_from_nav_trim_test(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
-    timing_data = TimingData(test_label)
-    timing_data.operationLabels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
+    timing_data = TestResult(test_label)
+    timing_data.op_labels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
 
     tc_log_file = get_testlog_path(test_dir)
     perf_log_file = get_perf_log_path(test_dir)
@@ -460,7 +476,7 @@ def collect_benchmark_data(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
-    timing_data = TimingData(test_label)
+    timing_data = TestResult(test_label)
 
     collect_startup_data(timing_data, test_dir)
 
@@ -480,8 +496,8 @@ def collect_fr_filesize_data(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
-    timing_data = TimingData(test_label)
-    timing_data.operationLabels = ["BuildDesign"]
+    timing_data = TestResult(test_label)
+    timing_data.op_labels = ["BuildDesign"]
 
     tc_log_file = get_testlog_path(test_dir)
     perf_log_file = get_perf_log_path(test_dir)
@@ -510,9 +526,9 @@ def test_dir_from_label(base_path, test_label):
 def main(base_path):
     global _output_file
     with open(os.path.join(base_path, "baseline-results.txt"), mode="w") as _output_file:
-        timing_array = [collect_basic_results(test_dir_from_label(base_path, DPT1_TEST.testLabel), DPT1_TEST),
-                        collect_basic_results(test_dir_from_label(base_path, DPT2_TEST.testLabel), DPT2_TEST),
-                        collect_basic_results(test_dir_from_label(base_path, BBT3_TEST.testLabel), BBT3_TEST)]
+        timing_array = [collect_basic_results(test_dir_from_label(base_path, DPT1_TEST.test_label), DPT1_TEST),
+                        collect_basic_results(test_dir_from_label(base_path, DPT2_TEST.test_label), DPT2_TEST),
+                        collect_basic_results(test_dir_from_label(base_path, BBT3_TEST.test_label), BBT3_TEST)]
         output_timings_to_txt_file(timing_array, _output_file)
 
     with open(os.path.join(base_path, "extra-results.txt"), mode="w") as _output_file:
