@@ -4,7 +4,7 @@ import sys
 import os.path
 import json
 from re import search
-#from time import datetime
+from datetime import datetime
 
 
 __author__ = 'JSmith' and 'SZhang'
@@ -40,16 +40,17 @@ _output_file = None
 Information output to JSon
 --------------------------
 TestSuiteRun
-    TODO: testSuiteLabel (something else can look up the testSuiteId)
+    TODO: label (something else can look up the testSuiteId)
     TODO: startDateTime
     TODO: duration: total of the test result durations. ideally elapsed time
     TODO: buildTestedId:
     IGNORED: testEnvironmentId
 
 TestResult
-    testLabel
+    label
     TODO: startDateTime
-    TODO: duration: total of the test operation durations. ideally elapsed time
+    value: total of the test operation durations. ideally elapsed time
+
     ----
     IGNORED: status : assume a pass?
     IGNORED: notes
@@ -117,19 +118,19 @@ def get_matching_lines_from_file(filename, tag_to_find):
 # We want to capture timestamps from lines like:
 #   2016-05-26 12:28:19,929 Serializer.ArchiveTypeResolver INFO : Processing assemblies on thread 5
 _TIMESTAMP_REGEX = r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})"
+_TIMESTAMP_PAMIR_FORMAT = "%Y-%m-%d %H:%M:%S,%f"
+_TIMESTAMP_JSON_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 
 
-def collect_test_start_and_duration_from_pamirlog(test_dir):
+def collect_start_and_duration_from_pamir_log(test_dir):
     """Use first and last long entry in the Pamir log as a guide for when test started and how long it ran.
     Return tuple (start, duration) where start is a datetime and duration is milliseconds (integer).
     If collection fails, start_time may be set to file date time or current time but duration is always set to 0."""
     log_file = get_pamir_log_path(test_dir)
 
     file = None
-    duration = 0
-    start = 0
-    first_valid_line = None
-    last_valid_line = None
+    first_valid_stamp = None
+    last_valid_stamp = None
     try:
         file = open(log_file, mode="r")
 
@@ -138,24 +139,48 @@ def collect_test_start_and_duration_from_pamirlog(test_dir):
             # decide if current line is worthy
             match = search(_TIMESTAMP_REGEX, line)
             if match:
-                if first_valid_line is None:
-                    first_valid_line = match.group(1)
+                if first_valid_stamp is None:
+                    first_valid_stamp = match.group(1)
                 else:
-                    last_valid_line = match.group(1)
+                    last_valid_stamp = match.group(1)
             line = file.readline()
 
-        print("Search results were: {} {}".format(first_valid_line, last_valid_line))
+        if _debug:
+            print("Search results were: {} {}".format(first_valid_stamp, last_valid_stamp))
     except IOError:
-        duration = 0
         pass
     finally:
         if file:
             file.close()
 
-    return start, duration
+    if first_valid_stamp is None:
+        start_time = get_file_datetime(log_file)
+    else:
+        start_time = datetime.strptime(first_valid_stamp, _TIMESTAMP_PAMIR_FORMAT)
+
+    if last_valid_stamp is None:
+        duration = 0
+    else:
+        end_time = datetime.strptime(last_valid_stamp, _TIMESTAMP_PAMIR_FORMAT)
+        duration_delta = end_time - start_time
+        duration = int(duration_delta.total_seconds() * 1000)
+
+    return start_time, duration
 
 
-def get_total_time_from_perf_line(perf_line):
+def get_file_datetime(filename: str) -> datetime:
+    mod_time = os.path.getmtime(filename)
+    return datetime.fromtimestamp(mod_time)
+
+
+def datetime_in_utc_format(value: datetime) -> str:
+    if value is None:
+        return ""
+
+    return value.strftime(_TIMESTAMP_JSON_FORMAT)
+
+
+def get_total_time_from_perf_line(perf_line: str):
     (a, sep, time_plus_splits) = perf_line.rpartition(":")
     (time_str, sep, b) = time_plus_splits.partition("(")
     return float(time_str)
@@ -200,6 +225,16 @@ def search_seconds_from_perf_lines(lines, search_string):
 # ---------------------------------------------------------
 
 
+class JSonLabels:
+    """Magic strings for JSon export"""
+    LABEL = "label"
+    VALUE = "value"
+    DURATION = "duration"
+    START_TIME = "startDateTime"
+    STATUS = "status"
+    OP_RESULTS = "operationResults"
+
+
 class OpLabels:
     """Holds all the magic strings for operation labels"""
     TO_LOGIN = "ToLogin"
@@ -230,8 +265,8 @@ class OpResult:
     def to_json_object(self):
         """Convert this OpResult into an object tailored for json serialization."""
         json_dict = {
-            "label": self.label,
-            "value": self.value,
+            JSonLabels.LABEL: self.label,
+            JSonLabels.VALUE: self.value,
         }
         return json_dict
 
@@ -248,8 +283,10 @@ class TestResult:
         # for JSon support
         self.label = test_label
         self.op_labels = []
+        self.start_time = None  # datetime
+        self.duration = 0  # milliseconds
 
-    def add_result(self, op_result: OpResult):
+    def add_op_result(self, op_result: OpResult):
         self.op_results[op_result.label] = op_result
 
     def to_json_object(self):
@@ -257,8 +294,10 @@ class TestResult:
         json_op_results = []
 
         json_dict = {
-            "label": self.label,
-            "operationResults": json_op_results,
+            JSonLabels.LABEL: self.label,
+            JSonLabels.OP_RESULTS: json_op_results,
+            JSonLabels.START_TIME: datetime_in_utc_format(self.start_time),
+            JSonLabels.DURATION: self.duration,
         }
 
         for op in self.op_results.values():
@@ -348,7 +387,7 @@ def output_timings_to_txt_file(timing_array, outfile):
 _SEARCH_STRING_STOPWATCH = "TC.Stopwatch"
 
 
-def collect_startup_data(timing_data, test_dir):
+def collect_startup_data(test_result, test_dir):
     """Collect timing from the TestComplete Test logs for
     the startup and shutdown."""
 
@@ -356,17 +395,17 @@ def collect_startup_data(timing_data, test_dir):
     lines = get_matching_lines_from_file(filename, _SEARCH_STRING_STOPWATCH)
 
     if len(lines) >= 2:
-        timing_data.add_result(OpResult(
+        test_result.add_op_result(OpResult(
             OpLabels.TO_LOGIN,
             milliseconds_from_stopwatch_line(lines[0]),
             lines[0]))
-        timing_data.add_result(OpResult(
+        test_result.add_op_result(OpResult(
             OpLabels.TO_MAIN_FORM,
             milliseconds_from_stopwatch_line(lines[1]),
             lines[1]))
 
     if len(lines) == 3:
-        timing_data.add_result(OpResult(
+        test_result.add_op_result(OpResult(
             OpLabels.PAMIR_SHUTDOWN,
             milliseconds_from_stopwatch_line(lines[2]),
             lines[2]))
@@ -374,7 +413,14 @@ def collect_startup_data(timing_data, test_dir):
     return
 
 
-def collect_file_size_for_test(timing_data, filename, search_string):
+def collect_pamir_start_and_duration(test_result, test_dir):
+    start, duration = collect_start_and_duration_from_pamir_log(test_dir)
+    test_result.start_time = start
+    test_result.duration = duration
+    return
+
+
+def collect_file_size_for_test(test_result, filename, search_string):
     """Collect data from the TestComplete Test logs for
     the Pamir file size"""
 
@@ -384,7 +430,7 @@ def collect_file_size_for_test(timing_data, filename, search_string):
     if len(lines) > 0:
         file_size = kilobytes_from_file_size_line(lines[0])
         result = OpResult(OpLabels.FILE_SIZE, file_size, lines[0])
-        timing_data.add_result(result)
+        test_result.add_op_result(result)
 
     return
 
@@ -393,18 +439,19 @@ def collect_basic_test_data(test_dir, test_label, perf_search_str):
     """Collect data from the TestComplete and Pamir Performance Test logs for
     one test."""
 
-    timing_data = TestResult(test_label)
+    test_result = TestResult(test_label)
 
-    collect_startup_data(timing_data, test_dir)
+    collect_startup_data(test_result, test_dir)
+    collect_pamir_start_and_duration(test_result, test_dir)
     perf_filename = get_perf_log_path(test_dir)
     data = get_matching_lines_from_file(perf_filename, perf_search_str)
     if _debug:
         debug_print_results(perf_filename, data, _output_file)
 
     for dataRow in data:
-        timing_data.runTimes.append(get_total_time_from_perf_line(dataRow))
+        test_result.runTimes.append(get_total_time_from_perf_line(dataRow))
 
-    return timing_data
+    return test_result
 
 # ---------------------------------------------------------
 # Basic test specifications and collection
@@ -448,37 +495,38 @@ def collect_data_from_nav_trim_test(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
-    timing_data = TestResult(test_label)
-    timing_data.op_labels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
+    test_result = TestResult(test_label)
+    test_result.op_labels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
 
     tc_log_file = get_testlog_path(test_dir)
     perf_log_file = get_perf_log_path(test_dir)
-    collect_startup_data(timing_data, test_dir)
+    collect_startup_data(test_result, test_dir)
+    collect_pamir_start_and_duration(test_result, test_dir)
 
     # collect benchmark results
     lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
     if _debug:
         debug_print_results(tc_log_file, lines, _output_file)
-    timing_data.runTimes.append(seconds_from_stopwatch_line(lines[4]))  # Paint.TotalTime
-    timing_data.runTimes.append(seconds_from_stopwatch_line(lines[6]))  # Refresh.AverageTime
+    test_result.runTimes.append(seconds_from_stopwatch_line(lines[4]))  # Paint.TotalTime
+    test_result.runTimes.append(seconds_from_stopwatch_line(lines[6]))  # Refresh.AverageTime
 
     # timings for other operations
     lines = get_matching_lines_from_file(perf_log_file, "Action.Execute\tComplete")
-    timing_data.runTimes.append(search_seconds_from_perf_lines(lines, "Toggle automatic framing zone"))
-    timing_data.runTimes.append(search_seconds_from_perf_lines(lines, "Trim/Extend"))
+    test_result.runTimes.append(search_seconds_from_perf_lines(lines, "Toggle automatic framing zone"))
+    test_result.runTimes.append(search_seconds_from_perf_lines(lines, "Trim/Extend"))
 
     if _debug: 
         debug_print_results(perf_log_file, lines, _output_file)
-    return timing_data
+    return test_result
 
 
 def collect_benchmark_data(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
-    timing_data = TestResult(test_label)
+    test_result = TestResult(test_label)
 
-    collect_startup_data(timing_data, test_dir)
+    collect_startup_data(test_result, test_dir)
 
     # collect benchmark results
     tc_log_file = get_testlog_path(test_dir)
@@ -486,32 +534,33 @@ def collect_benchmark_data(test_dir, test_label):
     if _debug:
         debug_print_results(tc_log_file, data, _output_file)
 
-    timing_data.runTimes.append(seconds_from_stopwatch_line(data[4]))  # Paint.TotalTime
-    timing_data.runTimes.append(seconds_from_stopwatch_line(data[6]))  # Refresh.AverageTime
+    test_result.runTimes.append(seconds_from_stopwatch_line(data[4]))  # Paint.TotalTime
+    test_result.runTimes.append(seconds_from_stopwatch_line(data[6]))  # Refresh.AverageTime
 
-    return timing_data
+    return test_result
 
 
 def collect_fr_filesize_data(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
-    timing_data = TestResult(test_label)
-    timing_data.op_labels = ["BuildDesign"]
+    test_result = TestResult(test_label)
+    test_result.op_labels = ["BuildDesign"]
 
     tc_log_file = get_testlog_path(test_dir)
     perf_log_file = get_perf_log_path(test_dir)
-    collect_startup_data(timing_data, test_dir)
+    collect_startup_data(test_result, test_dir)
+    collect_pamir_start_and_duration(test_result, test_dir)
 
     # collect the total time of designing all frames from "Pamir-perf.log"
     lines = get_matching_lines_from_file(perf_log_file, "BuildDesign")
     for line in lines:
-        timing_data.runTimes.append(get_total_time_from_perf_line(line))
+        test_result.runTimes.append(get_total_time_from_perf_line(line))
 
     # collect file size of the saved Pamir job
-    collect_file_size_for_test(timing_data, tc_log_file, "Pamir job:")
+    collect_file_size_for_test(test_result, tc_log_file, "Pamir job:")
 
-    return timing_data
+    return test_result
 
 
 # ---------------------------------------------------------
