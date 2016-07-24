@@ -34,6 +34,7 @@ Several more tests have been added since.
 
 _debug = False
 _output_file = None
+_TEST_ENVIRONMENT_ID = 0
 
 # ---------------------------------------------------------
 '''
@@ -44,23 +45,26 @@ TestSuiteRun
     TODO: startDateTime
     TODO: duration: total of the test result durations. ideally elapsed time
     TODO: buildTestedId:
-    IGNORED: testEnvironmentId
+    testEnvironmentId - currently hardcoded. might be supplied as an argument.
 
 TestResult
-    label
-    TODO: startDateTime
-    value: total of the test operation durations. ideally elapsed time
+    label: label identifying the test
+    startDateTime : time stamp when the test started.
+    duration: total of the test operation durations. ideally elapsed time
 
     ----
     IGNORED: status : assume a pass?
     IGNORED: notes
-    N/A: testId: inferred by hierarchy
+    N/A: testId: inferred by label
 
 TestOperationResult
+    label
+    value: typically duration in ms but could be kilobytes for file size
+
     IGNORED: status : assume a pass
     IGNORED: varianceFromBaseline: can be supplied by the server
     N/A: testOpResultId: supplied by the server
-    N/A: testOperationId: inferred by hierarchy
+    N/A: testOperationId: inferred by label
 
 
 '''
@@ -233,6 +237,8 @@ class JSonLabels:
     START_TIME = "startDateTime"
     STATUS = "status"
     OP_RESULTS = "operationResults"
+    TEST_ENV_ID = "testEnvironmentId"
+    TEST_RESULTS = "testResults"
 
 
 class OpLabels:
@@ -356,19 +362,6 @@ class TestResult:
         print("", file=outfile)  # new line to create a gap for next result
 
 
-def output_timings_to_json_file(timing_array, filename):
-    root_object = []
-
-    for td in timing_array:
-        if td is None:
-            continue
-
-        root_object.append(td.to_json_object())
-
-    with open(filename, mode="w") as jsonFile:
-        json.dump(root_object, jsonFile, indent=3, sort_keys=True)
-
-
 def output_timings_to_txt_file(timing_array, outfile):
     if _debug:
         print("\n===========================\n", file=outfile)
@@ -378,6 +371,28 @@ def output_timings_to_txt_file(timing_array, outfile):
             continue
 
         td.to_file(outfile)
+
+
+class TestSuiteRun:
+    def __init__(self, env_id: int):
+        self.test_enviroment_id = env_id
+        self.test_results = []
+
+    def append_result(self, result: TestResult):
+        self.test_results.append(result)
+
+    def to_json_object(self):
+        test_result_json = [r.to_json_object() for r in self.test_results]
+
+        result = {
+          JSonLabels.TEST_ENV_ID: self.test_enviroment_id,
+          JSonLabels.TEST_RESULTS: test_result_json,
+        }
+        return result
+
+    def to_json_file(self, filename: str):
+        with open(filename, mode="w") as jsonFile:
+            json.dump(self.to_json_object(), jsonFile, indent=3, sort_keys=True)
 
 
 # ---------------------------------------------------------
@@ -574,6 +589,8 @@ def test_dir_from_label(base_path, test_label):
 
 def main(base_path):
     global _output_file
+    test_suite_run = TestSuiteRun(_TEST_ENVIRONMENT_ID)
+
     with open(os.path.join(base_path, "baseline-results.txt"), mode="w") as _output_file:
         timing_array = [collect_basic_results(test_dir_from_label(base_path, DPT1_TEST.test_label), DPT1_TEST),
                         collect_basic_results(test_dir_from_label(base_path, DPT2_TEST.test_label), DPT2_TEST),
@@ -588,11 +605,12 @@ def main(base_path):
                          ]
         output_timings_to_txt_file(timing_array2, _output_file)
 
+    timing_array.extend(timing_array2)
     for td in timing_array2:
         if td is not None:
-            timing_array.append(td)
+            test_suite_run.append_result(td)
 
-    output_timings_to_json_file(timing_array, os.path.join(base_path, "results.json"))
+    test_suite_run.to_json_file(os.path.join(base_path, "results.json"))
 
     # collect data from extra tests
     #    timing_array.append(collectDataFromMonoToDuoTest("MDT5"))
