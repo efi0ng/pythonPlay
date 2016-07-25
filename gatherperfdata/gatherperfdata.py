@@ -34,7 +34,7 @@ Several more tests have been added since.
 
 _debug = False
 _output_file = None
-_TEST_ENVIRONMENT_ID = 0
+_TEST_ENVIRONMENT_LABEL = "EuroPmrTest2 TestComplete"
 
 # ---------------------------------------------------------
 '''
@@ -44,28 +44,20 @@ TestSuiteRun
     TODO: label (something else can look up the testSuiteId)
     TODO: startDateTime
     TODO: duration: total of the test result durations. ideally elapsed time
-    TODO: buildTestedId:
+    TODO: buildTested
+    TODO: notes
     testEnvironmentId - currently hardcoded. might be supplied as an argument.
+    testResults - array of TestResult
 
 TestResult
     label: label identifying the test
     startDateTime : time stamp when the test started.
     duration: total of the test operation durations. ideally elapsed time
-
-    ----
-    IGNORED: status : assume a pass?
-    IGNORED: notes
-    N/A: testId: inferred by label
+    operationResults: array of TestOperationResult
 
 TestOperationResult
-    label
+    label: operation label
     value: typically duration in ms but could be kilobytes for file size
-
-    IGNORED: status : assume a pass
-    IGNORED: varianceFromBaseline: can be supplied by the server
-    N/A: testOpResultId: supplied by the server
-    N/A: testOperationId: inferred by label
-
 
 '''
 
@@ -233,11 +225,12 @@ class JSonLabels:
     """Magic strings for JSon export"""
     LABEL = "label"
     VALUE = "value"
+    NOTES = "notes"
     DURATION = "duration"
     START_TIME = "startDateTime"
     STATUS = "status"
     OP_RESULTS = "operationResults"
-    TEST_ENV_ID = "testEnvironmentId"
+    TEST_ENV_LABEL = "testEnvironmentLabel"
     TEST_RESULTS = "testResults"
 
 
@@ -374,9 +367,10 @@ def output_timings_to_txt_file(timing_array, outfile):
 
 
 class TestSuiteRun:
-    def __init__(self, env_id: int):
-        self.test_enviroment_id = env_id
+    def __init__(self, env_label: str):
+        self.env_label = env_label
         self.test_results = []
+        self.notes = ""
 
     def append_result(self, result: TestResult):
         self.test_results.append(result)
@@ -385,8 +379,9 @@ class TestSuiteRun:
         test_result_json = [r.to_json_object() for r in self.test_results]
 
         result = {
-          JSonLabels.TEST_ENV_ID: self.test_enviroment_id,
+          JSonLabels.TEST_ENV_LABEL: self.env_label,
           JSonLabels.TEST_RESULTS: test_result_json,
+          JSonLabels.NOTES: self.notes
         }
         return result
 
@@ -589,7 +584,7 @@ def test_dir_from_label(base_path, test_label):
 
 def main(base_path):
     global _output_file
-    test_suite_run = TestSuiteRun(_TEST_ENVIRONMENT_ID)
+    test_suite_run = TestSuiteRun(_TEST_ENVIRONMENT_LABEL)
 
     with open(os.path.join(base_path, "baseline-results.txt"), mode="w") as _output_file:
         timing_array = [collect_basic_results(test_dir_from_label(base_path, DPT1_TEST.test_label), DPT1_TEST),
