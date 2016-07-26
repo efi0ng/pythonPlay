@@ -6,7 +6,6 @@ import json
 from re import search
 from datetime import datetime
 
-
 __author__ = 'JSmith' and 'SZhang'
 
 """assumes usual performance test hierarchy of folders.
@@ -34,7 +33,7 @@ Several more tests have been added since.
 
 _debug = False
 _output_file = None
-_TEST_ENVIRONMENT_LABEL = "EuroPmrTest2 TestComplete"
+_TEST_SUITE_LABEL = "TestComplete"
 
 # ---------------------------------------------------------
 '''
@@ -230,8 +229,14 @@ class JSonLabels:
     START_TIME = "startDateTime"
     STATUS = "status"
     OP_RESULTS = "operationResults"
-    TEST_ENV_LABEL = "testEnvironmentLabel"
+    TEST_SUITE_LABEL = "testSuiteLabel"
     TEST_RESULTS = "testResults"
+    MACHINE = "machine"
+    NAME = "name"
+    PROCESSOR = "processor"
+    CPU_COUNT = "logicalCores"
+    MEMORY = "memory"
+    OPERATING_SYSTEM = "operatingSystem"
 
 
 class OpLabels:
@@ -268,6 +273,41 @@ class OpResult:
             JSonLabels.VALUE: self.value,
         }
         return json_dict
+
+
+class TestMachine:
+    """Encapsulates information describing a test machine and the methods to gather that
+    information for the machine this code is running on.
+
+    Requires psutil which can be installed via  python.exe -m pip install psutil"""
+    def __init__(self):
+        self.name = ""
+        self.processor = ""
+        self.logical_cores = 0
+        self.memory = 0
+        self.operating_system = ""
+
+    def to_json_object(self):
+        return {
+            JSonLabels.NAME: self.name,
+            JSonLabels.PROCESSOR: self.processor,
+            JSonLabels.OPERATING_SYSTEM: self.operating_system,
+            JSonLabels.CPU_COUNT: self.logical_cores,
+            JSonLabels.MEMORY: self.memory
+        }
+
+
+def test_machine_from_host():
+    import platform
+    from psutil import cpu_count, virtual_memory
+
+    machine = TestMachine()
+    machine.name = platform.node()
+    machine.processor = platform.processor()
+    machine.logical_cores = cpu_count()
+    machine.operating_system = "{} {} {}".format(platform.system(), platform.release(), platform.version())
+    machine.memory = int(virtual_memory().total / (1024*1024))
+    return machine
 
 
 class TestResult:
@@ -367,10 +407,14 @@ def output_timings_to_txt_file(timing_array, outfile):
 
 
 class TestSuiteRun:
-    def __init__(self, env_label: str):
-        self.env_label = env_label
+    def __init__(self, suite_label: str, machine: TestMachine):
+        """
+        :type machine: TestMachine
+        """
+        self.suite_label = suite_label
         self.test_results = []
         self.notes = ""
+        self.machine = machine
 
     def append_result(self, result: TestResult):
         self.test_results.append(result)
@@ -379,9 +423,10 @@ class TestSuiteRun:
         test_result_json = [r.to_json_object() for r in self.test_results]
 
         result = {
-          JSonLabels.TEST_ENV_LABEL: self.env_label,
-          JSonLabels.TEST_RESULTS: test_result_json,
-          JSonLabels.NOTES: self.notes
+            JSonLabels.TEST_SUITE_LABEL: self.suite_label,
+            JSonLabels.TEST_RESULTS: test_result_json,
+            JSonLabels.NOTES: self.notes,
+            JSonLabels.MACHINE: self.machine.to_json_object(),
         }
         return result
 
@@ -584,7 +629,9 @@ def test_dir_from_label(base_path, test_label):
 
 def main(base_path):
     global _output_file
-    test_suite_run = TestSuiteRun(_TEST_ENVIRONMENT_LABEL)
+    machine = test_machine_from_host()
+
+    test_suite_run = TestSuiteRun(_TEST_SUITE_LABEL, machine)
 
     with open(os.path.join(base_path, "baseline-results.txt"), mode="w") as _output_file:
         timing_array = [collect_basic_results(test_dir_from_label(base_path, DPT1_TEST.test_label), DPT1_TEST),
