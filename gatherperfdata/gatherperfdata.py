@@ -3,7 +3,7 @@
 import sys
 import os.path
 import json
-from re import search
+import re
 from datetime import datetime
 
 __author__ = 'JSmith' and 'SZhang'
@@ -43,7 +43,7 @@ TestSuiteRun
     label - theoretically unique to this test run but may be a duplicate as we only use the folder name
     startDateTime - uses the start time of the first test. if no tests were run, it uses the folder modified time.
     duration: total of the test result durations. ideally elapsed time
-    TODO: buildTested
+    buildTested
     TODO: notes
     testSuiteLabel
     testEnvironmentId - currently hardcoded. might be supplied as an argument.
@@ -58,6 +58,11 @@ TestResult
 TestOperationResult
     label: operation label
     value: typically duration in ms but could be kilobytes for file size
+
+Added:
+
+TestMachine
+BuildInfo
 
 '''
 
@@ -135,7 +140,7 @@ def collect_start_and_duration_from_pamir_log(test_dir):
         line = file.readline()
         while line:
             # decide if current line is worthy
-            match = search(_TIMESTAMP_REGEX, line)
+            match = re.search(_TIMESTAMP_REGEX, line)
             if match:
                 if first_valid_stamp is None:
                     first_valid_stamp = match.group(1)
@@ -221,16 +226,19 @@ def search_seconds_from_perf_lines(lines, search_string):
 
 
 def get_pamir_version_from_log(test_dir):
+    """Get Pamir version information from log in given test dir.
+    Returns (version_short, version_full, revision) a tuple of strings."""
     # capture Pamir version information from lines like:
     # 2016-05-26 12:43:28,262 MiTek.Pamir INFO : Pamir 5.1.0 (Internal WIP 5.1.0.3149 (r70160)) starting
     # 2016-06-14 12:06:11,298 MiTek.Pamir INFO : Pamir 5.1.2 (5.1.2.38 (r70761)) starting
     # 2015-06-18 13:49:35,348 MiTek.Pamir INFO : Pamir 4.0.3 (56480) starting
 
-    _PAMIR_VERSION_LINE_REGEX = r"Pamir (\d{1}.\d{1}.\d{1})"
+    _PAMIR_VERSION_LINE_REGEX = r"Pamir (\d{1}.\d{1}.\d{1}) \((.+)\) start"
 
     log_file = get_pamir_log_path(test_dir)
-    version_string = None
-    revision_string = None
+    version_short = ""
+    version_full = ""
+    revision = 0
 
     file = None
     try:
@@ -238,22 +246,30 @@ def get_pamir_version_from_log(test_dir):
 
         line = file.readline()
         while line:
-            # decide if current line is worthy
-            match = search(_PAMIR_VERSION_LINE_REGEX, line)
+            match = re.search(_PAMIR_VERSION_LINE_REGEX, line)
             if match:
-                version_string = match.group(1)
-                #revision_string = match.group(2)
+                version_short = match.group(1)
+                version_full = match.group(2)
                 break
 
             line = file.readline()
 
-        # if _debug:
-        print("Search results were: {} {}".format(version_string, revision_string))
     except IOError:
         pass
     finally:
         if file:
             file.close()
+
+    if version_full != "":
+        # look for bracketed revision within the full version string
+        match = re.search(r"\((.+)\)", version_full)
+        if match:
+            revision = int(re.sub("r", "", match.group(1)))
+
+    if _debug:
+        print("Version search results were: {}, {}, {}".format(version_short, version_full, revision))
+
+    return version_short, version_full, revision
 
 
 # ---------------------------------------------------------
@@ -278,6 +294,10 @@ class JSonLabels:
     CPU_COUNT = "logicalCores"
     MEMORY = "memory"
     OPERATING_SYSTEM = "operatingSystem"
+    VERSION_SHORT = "versionShort"
+    VERSION_LONG = "versionLong"
+    REVISION = "revision"
+    BUILD_TESTED = "buildTested"
 
 
 class OpLabels:
@@ -335,6 +355,20 @@ class TestMachine:
             JSonLabels.OPERATING_SYSTEM: self.operating_system,
             JSonLabels.CPU_COUNT: self.logical_cores,
             JSonLabels.MEMORY: self.memory
+        }
+
+
+class BuildInfo:
+    def __init__(self, ver_short, ver_long, rev):
+        self.version_short = ver_short
+        self.version_long = ver_long
+        self.revision = rev
+
+    def to_json_object(self):
+        return {
+            JSonLabels.VERSION_SHORT: self.version_short,
+            JSonLabels.VERSION_LONG: self.version_long,
+            JSonLabels.REVISION: self.revision,
         }
 
 
@@ -436,28 +470,16 @@ class TestResult:
         print("", file=outfile)  # new line to create a gap for next result
 
 
-def output_timings_to_txt_file(timing_array, outfile):
-    if _debug:
-        print("\n===========================\n", file=outfile)
-
-    for td in timing_array:
-        if td is None:
-            continue
-
-        td.to_file(outfile)
-
-
 class TestSuiteRun:
     def __init__(self, suite_label: str, machine: TestMachine):
-        """
-        :type machine: TestMachine
-        """
+        self.label = ""
         self.suite_label = suite_label
         self.test_results = []
         self.notes = ""
         self.machine = machine
         self.start_time = datetime.today()
         self.duration = 0
+        self.build_info = BuildInfo("", "", 0)
 
     def append_result(self, result: TestResult):
         self.test_results.append(result)
@@ -487,6 +509,7 @@ class TestSuiteRun:
             JSonLabels.MACHINE: self.machine.to_json_object(),
             JSonLabels.DURATION: self.duration,
             JSonLabels.START_TIME: datetime_in_utc_format(self.start_time),
+            JSonLabels.BUILD_TESTED: self.build_info.to_json_object(),
         }
         return result
 
@@ -569,13 +592,21 @@ def collect_basic_test_data(test_dir: str, test_label: str, perf_search_str: str
     return test_result
 
 
-def collect_test_suite_run_data(test_suite_run: TestSuiteRun, run_dir: str):
+def collect_build_info_from_test(base_path, test_label):
+    version_info = get_pamir_version_from_log(test_dir_from_label(base_path, test_label))
+    return BuildInfo(version_info[0], version_info[1], version_info[2])
+
+
+def collect_test_suite_run_data(test_suite_run: TestSuiteRun, base_path: str):
     """Collect information to populate a TestSuiteRun object. Call this after you've added all the test results."""
-    normed_dir = os.path.normpath(run_dir)
+    normed_dir = os.path.normpath(base_path)
     test_suite_run.label = os.path.basename(normed_dir)
 
+    if len(test_suite_run.test_results) > 0:
+        test_suite_run.build_info = collect_build_info_from_test(base_path, test_suite_run.test_results[0].label)
+
     if not test_suite_run.calc_start_duration_from_tests():
-        test_suite_run.startDateTime = get_file_datetime(run_dir)
+        test_suite_run.startDateTime = get_file_datetime(base_path)
 
     pass
 
@@ -697,6 +728,17 @@ def collect_fr_filesize_data(test_dir, test_label):
 
 def test_dir_from_label(base_path, test_label):
     return os.path.join(base_path, test_label)
+
+
+def output_timings_to_txt_file(test_results, outfile):
+    if _debug:
+        print("\n===========================\n", file=outfile)
+
+    for td in test_results:
+        if td is None:
+            continue
+
+        td.to_file(outfile)
 
 
 def main(base_path):
