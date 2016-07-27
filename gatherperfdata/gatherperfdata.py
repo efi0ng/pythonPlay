@@ -40,11 +40,12 @@ _TEST_SUITE_LABEL = "TestComplete"
 Information output to JSon
 --------------------------
 TestSuiteRun
-    TODO: label (something else can look up the testSuiteId)
-    TODO: startDateTime
-    TODO: duration: total of the test result durations. ideally elapsed time
+    label - theoretically unique to this test run but may be a duplicate as we only use the folder name
+    startDateTime - uses the start time of the first test. if no tests were run, it uses the folder modified time.
+    duration: total of the test result durations. ideally elapsed time
     TODO: buildTested
     TODO: notes
+    testSuiteLabel
     testEnvironmentId - currently hardcoded. might be supplied as an argument.
     testResults - array of TestResult
 
@@ -110,9 +111,6 @@ def get_matching_lines_from_file(filename, tag_to_find):
     return results
 
 
-# We want to capture timestamps from lines like:
-#   2016-05-26 12:28:19,929 Serializer.ArchiveTypeResolver INFO : Processing assemblies on thread 5
-_TIMESTAMP_REGEX = r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})"
 _TIMESTAMP_PAMIR_FORMAT = "%Y-%m-%d %H:%M:%S,%f"
 _TIMESTAMP_JSON_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 
@@ -121,6 +119,11 @@ def collect_start_and_duration_from_pamir_log(test_dir):
     """Use first and last long entry in the Pamir log as a guide for when test started and how long it ran.
     Return tuple (start, duration) where start is a datetime and duration is milliseconds (integer).
     If collection fails, start_time may be set to file date time or current time but duration is always set to 0."""
+
+    # We want to capture timestamps from lines like:
+    #   2016-05-26 12:28:19,929 Serializer.ArchiveTypeResolver INFO : Processing assemblies on thread 5
+    _TIMESTAMP_REGEX = r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})"
+
     log_file = get_pamir_log_path(test_dir)
 
     file = None
@@ -169,6 +172,7 @@ def get_file_datetime(filename: str) -> datetime:
 
 
 def datetime_in_utc_format(value: datetime) -> str:
+    """Convert a datetime to the UTC format we are using in JSon files"""
     if value is None:
         return ""
 
@@ -214,6 +218,43 @@ def search_seconds_from_perf_lines(lines, search_string):
             return seconds_from_perf_line(line)
 
     return 0.0
+
+
+def get_pamir_version_from_log(test_dir):
+    # capture Pamir version information from lines like:
+    # 2016-05-26 12:43:28,262 MiTek.Pamir INFO : Pamir 5.1.0 (Internal WIP 5.1.0.3149 (r70160)) starting
+    # 2016-06-14 12:06:11,298 MiTek.Pamir INFO : Pamir 5.1.2 (5.1.2.38 (r70761)) starting
+    # 2015-06-18 13:49:35,348 MiTek.Pamir INFO : Pamir 4.0.3 (56480) starting
+
+    _PAMIR_VERSION_LINE_REGEX = r"Pamir (\d{1}.\d{1}.\d{1})"
+
+    log_file = get_pamir_log_path(test_dir)
+    version_string = None
+    revision_string = None
+
+    file = None
+    try:
+        file = open(log_file, mode="r")
+
+        line = file.readline()
+        while line:
+            # decide if current line is worthy
+            match = search(_PAMIR_VERSION_LINE_REGEX, line)
+            if match:
+                version_string = match.group(1)
+                #revision_string = match.group(2)
+                break
+
+            line = file.readline()
+
+        # if _debug:
+        print("Search results were: {} {}".format(version_string, revision_string))
+    except IOError:
+        pass
+    finally:
+        if file:
+            file.close()
+
 
 # ---------------------------------------------------------
 # Model classes inc. TestResult
@@ -415,18 +456,37 @@ class TestSuiteRun:
         self.test_results = []
         self.notes = ""
         self.machine = machine
+        self.start_time = datetime.today()
+        self.duration = 0
 
     def append_result(self, result: TestResult):
         self.test_results.append(result)
+
+    def calc_start_duration_from_tests(self):
+        if self.test_results.count == 0:
+            return False
+
+        self.start_time = self.test_results[0].start_time
+        self.duration = self.test_results[0].duration
+
+        for i in range(1, len(self.test_results)):
+            next_result = self.test_results[i]
+            if next_result.start_time < self.start_time:
+                self.start_time = next_result.start_time
+
+            self.duration += next_result.duration
 
     def to_json_object(self):
         test_result_json = [r.to_json_object() for r in self.test_results]
 
         result = {
+            JSonLabels.LABEL: self.label,
             JSonLabels.TEST_SUITE_LABEL: self.suite_label,
             JSonLabels.TEST_RESULTS: test_result_json,
             JSonLabels.NOTES: self.notes,
             JSonLabels.MACHINE: self.machine.to_json_object(),
+            JSonLabels.DURATION: self.duration,
+            JSonLabels.START_TIME: datetime_in_utc_format(self.start_time),
         }
         return result
 
@@ -490,7 +550,7 @@ def collect_file_size_for_test(test_result, filename, search_string):
     return
 
 
-def collect_basic_test_data(test_dir, test_label, perf_search_str):
+def collect_basic_test_data(test_dir: str, test_label: str, perf_search_str: str):
     """Collect data from the TestComplete and Pamir Performance Test logs for
     one test."""
 
@@ -507,6 +567,18 @@ def collect_basic_test_data(test_dir, test_label, perf_search_str):
         test_result.runTimes.append(get_total_time_from_perf_line(dataRow))
 
     return test_result
+
+
+def collect_test_suite_run_data(test_suite_run: TestSuiteRun, run_dir: str):
+    """Collect information to populate a TestSuiteRun object. Call this after you've added all the test results."""
+    normed_dir = os.path.normpath(run_dir)
+    test_suite_run.label = os.path.basename(normed_dir)
+
+    if not test_suite_run.calc_start_duration_from_tests():
+        test_suite_run.startDateTime = get_file_datetime(run_dir)
+
+    pass
+
 
 # ---------------------------------------------------------
 # Basic test specifications and collection
@@ -652,6 +724,7 @@ def main(base_path):
         if td is not None:
             test_suite_run.append_result(td)
 
+    collect_test_suite_run_data(test_suite_run, base_path)
     test_suite_run.to_json_file(os.path.join(base_path, "results.json"))
 
     # collect data from extra tests
