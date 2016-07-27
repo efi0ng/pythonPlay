@@ -443,29 +443,29 @@ class TestResult:
     def to_file(self, outfile):
         to_login = self.op_results[OpLabels.TO_LOGIN].to_seconds()
         to_main_form = self.op_results[OpLabels.TO_MAIN_FORM].to_seconds()
-        print("%.3f\n%.3f" % (to_login, to_main_form), file=outfile)
+        print("{:.3f}\n{:.3f}".format(to_login, to_main_form), file=outfile)
 
         if self.selectMetalwork is not None:
-            print("%.3f" % self.selectMetalwork, file=outfile)  # print the time of selected Metalwork
+            print("{:.3f}".format(self.selectMetalwork), file=outfile)
 
         if len(self.runTimes) != 0:
             for runTime in self.runTimes:
-                print("%.3f" % runTime, file=outfile)
+                print("{:.3f}".format(runTime), file=outfile)
 
         if self.sapphireReport is not None:
-            print("%.3f" % self.sapphireReport, file=outfile)  # print the time of generating Sapphire Report
+            print("{:.3f}".format(self.sapphireReport), file=outfile)  # generating Sapphire Report
 
         if OpLabels.PAMIR_SHUTDOWN in self.op_results:
-            print("%.3f" % self.op_results[OpLabels.PAMIR_SHUTDOWN].to_seconds(), file=outfile)
+            print("{:.3f}".format(self.op_results[OpLabels.PAMIR_SHUTDOWN].to_seconds()), file=outfile)
 
         if self.sapphireShutdown is not None:
-            print("%.3f" % self.sapphireShutdown, file=outfile)  # print the time of Sapphire Report Viewer Shutdown
+            print("{:.3f}".format(self.sapphireShutdown), file=outfile)  # Sapphire Report Viewer Shutdown
 
         if self.twenty20Shutdown is not None:
-            print("%.3f" % self.twenty20Shutdown, file=outfile)
+            print("{:.3f}".format(self.twenty20Shutdown), file=outfile)
 
         if OpLabels.FILE_SIZE in self.op_results:
-            print("%.3f" % self.op_results[OpLabels.FILE_SIZE].to_megabytes(), file=outfile)
+            print("{:.3f}".format(self.op_results[OpLabels.FILE_SIZE].to_megabytes()), file=outfile)
 
         print("", file=outfile)  # new line to create a gap for next result
 
@@ -762,7 +762,7 @@ def main(base_path):
         output_timings_to_txt_file(timing_array2, _output_file)
 
     timing_array.extend(timing_array2)
-    for td in timing_array2:
+    for td in timing_array:
         if td is not None:
             test_suite_run.append_result(td)
 
