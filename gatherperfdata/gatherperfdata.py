@@ -40,11 +40,10 @@ _TEST_SUITE_LABEL = "TestComplete"
 Information output to JSon
 --------------------------
 TestSuiteRun
-    label - theoretically unique to this test run but may be a duplicate as we only use the folder name
     startDateTime - uses the start time of the first test. if no tests were run, it uses the folder modified time.
     duration: total of the test result durations. ideally elapsed time
     buildTested
-    TODO: notes
+    notes
     testSuiteLabel
     testEnvironmentId - currently hardcoded. might be supplied as an argument.
     testResults - array of TestResult
@@ -262,9 +261,15 @@ def get_pamir_version_from_log(test_dir):
 
     if version_full != "":
         # look for bracketed revision within the full version string
-        match = re.search(r"\((.+)\)", version_full)
-        if match:
-            revision = int(re.sub("r", "", match.group(1)))
+        try:
+            match = re.search(r"\((.+)\)", version_full)
+            if match:
+                revision = int(re.sub("r", "", match.group(1)))
+            else:
+                revision = int(version_full)
+        except ValueError:
+            print("Error: failed to parse revision number from '{}'".format(version_full))
+            revision = 0
 
     if _debug:
         print("Version search results were: {}, {}, {}".format(version_short, version_full, revision))
@@ -373,15 +378,26 @@ class BuildInfo:
 
 
 def test_machine_from_host():
+    """Get test machine data.
+    Requires psutil and py-cpuinfo packages from PyPy:
+    python -m pip install psutil
+    python -m pip install py-cpuinfo"""
+    # check if dependencies have been installed before running. give advice
+    import importlib.util
+    if not importlib.util.find_spec("psutil") or not importlib.util.find_spec("cpuinfo"):
+        raise Exception(test_machine_from_host.__doc__)
+
     import platform
     from psutil import cpu_count, virtual_memory
+    from cpuinfo import cpuinfo
 
     machine = TestMachine()
     machine.name = platform.node()
-    machine.processor = platform.processor()
+    machine.processor = cpuinfo.get_cpu_info()["brand"]
     machine.logical_cores = cpu_count()
-    machine.operating_system = "{} {} {}".format(platform.system(), platform.release(), platform.version())
-    machine.memory = int(virtual_memory().total / (1024*1024))
+    machine.operating_system = "{} {} ({})".format(platform.system(), platform.release(), platform.version())
+    machine.memory = int(virtual_memory().total / (1024 * 1024))
+
     return machine
 
 
@@ -472,7 +488,6 @@ class TestResult:
 
 class TestSuiteRun:
     def __init__(self, suite_label: str, machine: TestMachine):
-        self.label = ""
         self.suite_label = suite_label
         self.test_results = []
         self.notes = ""
@@ -502,7 +517,6 @@ class TestSuiteRun:
         test_result_json = [r.to_json_object() for r in self.test_results]
 
         result = {
-            JSonLabels.LABEL: self.label,
             JSonLabels.TEST_SUITE_LABEL: self.suite_label,
             JSonLabels.TEST_RESULTS: test_result_json,
             JSonLabels.NOTES: self.notes,
@@ -600,7 +614,7 @@ def collect_build_info_from_test(base_path, test_label):
 def collect_test_suite_run_data(test_suite_run: TestSuiteRun, base_path: str):
     """Collect information to populate a TestSuiteRun object. Call this after you've added all the test results."""
     normed_dir = os.path.normpath(base_path)
-    test_suite_run.label = os.path.basename(normed_dir)
+    test_suite_run.notes = "Test folder: {}".format(os.path.basename(normed_dir))
 
     if len(test_suite_run.test_results) > 0:
         test_suite_run.build_info = collect_build_info_from_test(base_path, test_suite_run.test_results[0].label)
