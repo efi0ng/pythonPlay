@@ -53,6 +53,7 @@ TestResult
     startDateTime : time stamp when the test started.
     duration: total of the test operation durations. ideally elapsed time
     operationResults: array of TestOperationResult
+    status: currently always "pass" as failures are not recorded.
 
 TestOperationResult
     label: operation label
@@ -415,6 +416,7 @@ class TestResult:
         self.op_labels = []
         self.start_time = None  # datetime
         self.duration = 0  # milliseconds
+        self.status = "pass"
 
     def add_op_result(self, op_result: OpResult):
         self.op_results[op_result.label] = op_result
@@ -428,6 +430,7 @@ class TestResult:
             JSonLabels.OP_RESULTS: json_op_results,
             JSonLabels.START_TIME: datetime_in_utc_format(self.start_time),
             JSonLabels.DURATION: self.duration,
+            JSonLabels.STATUS: self.status,
         }
 
         for op in self.op_results.values():
@@ -663,24 +666,29 @@ def collect_basic_results(test_dir, test_spec):
 # ---------------------------------------------------------
 
 
-def collect_data_from_nav_trim_test(test_dir, test_label):
+def add_benchmark_data_as_op_results(test_result, tc_log_file):
+    lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
+    if _debug:
+        debug_print_results(tc_log_file, lines, _output_file)
+
+    test_result.runTimes.append(seconds_from_stopwatch_line(lines[4]))  # Paint.TotalTime
+    test_result.runTimes.append(seconds_from_stopwatch_line(lines[6]))  # Refresh.AverageTime
+
+
+def collect_nav_trim_test(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
     test_result = TestResult(test_label)
     test_result.op_labels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
 
-    tc_log_file = get_testlog_path(test_dir)
     perf_log_file = get_perf_log_path(test_dir)
     collect_startup_data(test_result, test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
 
     # collect benchmark results
-    lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
-    if _debug:
-        debug_print_results(tc_log_file, lines, _output_file)
-    test_result.runTimes.append(seconds_from_stopwatch_line(lines[4]))  # Paint.TotalTime
-    test_result.runTimes.append(seconds_from_stopwatch_line(lines[6]))  # Refresh.AverageTime
+    tc_log_file = get_testlog_path(test_dir)
+    add_benchmark_data_as_op_results(test_result, tc_log_file)
 
     # timings for other operations
     lines = get_matching_lines_from_file(perf_log_file, "Action.Execute\tComplete")
@@ -692,22 +700,18 @@ def collect_data_from_nav_trim_test(test_dir, test_label):
     return test_result
 
 
-def collect_benchmark_data(test_dir, test_label):
+def collect_benchmark_test(test_dir, test_label):
     if not os.path.exists(test_dir):
         return None
 
     test_result = TestResult(test_label)
+    test_result.op_labels = ["LayoutPaint", "Refresh"]
 
     collect_startup_data(test_result, test_dir)
+    collect_pamir_start_and_duration(test_result, test_dir)
 
-    # collect benchmark results
     tc_log_file = get_testlog_path(test_dir)
-    data = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
-    if _debug:
-        debug_print_results(tc_log_file, data, _output_file)
-
-    test_result.runTimes.append(seconds_from_stopwatch_line(data[4]))  # Paint.TotalTime
-    test_result.runTimes.append(seconds_from_stopwatch_line(data[6]))  # Refresh.AverageTime
+    add_benchmark_data_as_op_results(test_result, tc_log_file)
 
     return test_result
 
@@ -735,6 +739,28 @@ def collect_fr_filesize_data(test_dir, test_label):
     return test_result
 
 
+def collect_mono_to_duo_test(test_dir, test_label):
+    if not os.path.exists(test_dir):
+        return None
+
+    test_result = TestResult(test_label)
+    test_result.op_labels = ["LayoutPaint", "Refresh", "Delete"]
+
+    tc_log_file = get_testlog_path(test_dir)
+    perf_log_file = get_perf_log_path(test_dir)
+    collect_startup_data(test_result, test_dir)
+    collect_pamir_start_and_duration(test_result, test_dir)
+
+    # collect benchmark results
+    add_benchmark_data_as_op_results(test_result, tc_log_file)
+
+    # timings for other operations
+    lines = get_matching_lines_from_file(perf_log_file, "Action.Execute\tComplete")
+    test_result.runTimes.append(search_seconds_from_perf_lines(lines, "Delete"))
+
+    return test_result
+
+
 # ---------------------------------------------------------
 # Main program
 # ---------------------------------------------------------
@@ -755,6 +781,18 @@ def output_timings_to_txt_file(test_results, outfile):
         td.to_file(outfile)
 
 
+def basic_test(base_path, test_spec: TestSpec):
+    """Collect data from basic test run"""
+    test_dir = test_dir_from_label(base_path, test_spec.test_label)
+    return collect_basic_results(test_dir, test_spec)
+
+
+def extra_test(collector, base_path, test_label):
+    """Collect data from extra test run"""
+    test_dir = test_dir_from_label(base_path, test_label)
+    return collector(test_dir, test_label)
+
+
 def main(base_path):
     global _output_file
     machine = test_machine_from_host()
@@ -762,16 +800,34 @@ def main(base_path):
     test_suite_run = TestSuiteRun(_TEST_SUITE_LABEL, machine)
 
     with open(os.path.join(base_path, "baseline-results.txt"), mode="w") as _output_file:
-        timing_array = [collect_basic_results(test_dir_from_label(base_path, DPT1_TEST.test_label), DPT1_TEST),
-                        collect_basic_results(test_dir_from_label(base_path, DPT2_TEST.test_label), DPT2_TEST),
-                        collect_basic_results(test_dir_from_label(base_path, BBT3_TEST.test_label), BBT3_TEST)]
+        timing_array = [basic_test(base_path, DPT1_TEST),
+                        basic_test(base_path, DPT2_TEST),
+                        basic_test(base_path, BBT3_TEST)]
         output_timings_to_txt_file(timing_array, _output_file)
 
     with open(os.path.join(base_path, "extra-results.txt"), mode="w") as _output_file:
-        timing_array2 = [collect_data_from_nav_trim_test(test_dir_from_label(base_path, "NTT4"), "NTT4"),
-                         collect_fr_filesize_data(test_dir_from_label(base_path, "FR-MST18"), "FR-MST18"),
-                         collect_fr_filesize_data(test_dir_from_label(base_path, "FR-SST19"), "FR-SST19"),
-                         collect_fr_filesize_data(test_dir_from_label(base_path, "FR-DST20"), "FR-DST20"),
+        timing_array2 = [extra_test(collect_nav_trim_test, base_path, "NTT4"),
+                         extra_test(collect_mono_to_duo_test, base_path, "MDT5"),
+                         #    timing_array.append(collectDataFromFrameDesignTest("HD4_FDT6"))
+                         #    timing_array.append(collectDataFromFrameDesignTest("CHP_FDT10"))
+                         #    timing_array.append(collectDataFromHipToHipPlusTest("FR-HHT7"))
+                         #    timing_array.append(collectDataFromHipToHipPlusTest("UK-HHT8"))
+                         extra_test(collect_benchmark_test, base_path, "FR_LWS9"),
+                         #    timing_array.append(collectDataFromUK_ThousandDrawingObjectsTest("UK_TDOT17"))
+                         extra_test(collect_benchmark_test, base_path, "SW_FBMT11"),
+                         extra_test(collect_benchmark_test, base_path, "UK_HT1_FBMT12"),
+                         #    timing_array.append(collectDataFromOutputPDFTests("ISOLA_PDF13"))
+                         #    timing_array.append(collectDataFromOutputPDFTests("UK_LayoutPDF14"))
+                         #    timing_array.append(collectDataFromUK_DisableHangerHipToHipTest("UK-DISH15"))
+                         #    timing_array.append(collectDataFromUK_EnableHangerHipToHipTest("UK-ENAH16"))
+                         extra_test(collect_fr_filesize_data, base_path, "FR-MST18"),
+                         extra_test(collect_fr_filesize_data, base_path, "FR-SST19"),
+                         extra_test(collect_fr_filesize_data, base_path, "FR-DST20"),
+                         #    timing_array.append(collectDataFromUK_OpenAndSaveTest("UK-OST21"))
+                         #    timing_array.append(collectDataFromMultipleDesignCasesTest("T22-FR-MDC"))
+                         #    timing_array.append(collectDataFromFrameDesignWithScabTest("T23-FR-SCAB"))
+                         #    timing_array.append(collectDataFromFullSynchronisationTest("UK-SYNC"))
+                         #    timing_array.append(collectDataFromSapphireReportTest("UK-SAREP"))
                          ]
         output_timings_to_txt_file(timing_array2, _output_file)
 
@@ -782,26 +838,6 @@ def main(base_path):
 
     collect_test_suite_run_data(test_suite_run, base_path)
     test_suite_run.to_json_file(os.path.join(base_path, "results.json"))
-
-    # collect data from extra tests
-    #    timing_array.append(collectDataFromMonoToDuoTest("MDT5"))
-    #    timing_array.append(collectDataFromFrameDesignTest("HD4_FDT6"))
-    #    timing_array.append(collectDataFromFrameDesignTest("CHP_FDT10"))
-    #    timing_array.append(collectDataFromHipToHipPlusTest("FR-HHT7"))
-    #    timing_array.append(collectDataFromHipToHipPlusTest("UK-HHT8"))
-    #    timing_array.append(collect_benchmark_data("FR_LWS9"))
-    #    timing_array.append(collectDataFromUK_ThousandDrawingObjectsTest("UK_TDOT17"))
-    #    timing_array.append(collect_benchmark_data("SW_FBMT11"))
-    #    timing_array.append(collect_benchmark_data("UK_HT1_FBMT12"))
-    #    timing_array.append(collectDataFromOutputPDFTests("ISOLA_PDF13"))
-    #    timing_array.append(collectDataFromOutputPDFTests("UK_LayoutPDF14"))
-    #    timing_array.append(collectDataFromUK_DisableHangerHipToHipTest("UK-DISH15"))
-    #    timing_array.append(collectDataFromUK_EnableHangerHipToHipTest("UK-ENAH16"))
-    #    timing_array.append(collectDataFromUK_OpenAndSaveTest("UK-OST21"))
-    #    timing_array.append(collectDataFromMultipleDesignCasesTest("T22-FR-MDC"))
-    #    timing_array.append(collectDataFromFrameDesignWithScabTest("T23-FR-SCAB"))
-    #    timing_array.append(collectDataFromFullSynchronisationTest("UK-SYNC"))
-    #    timing_array.append(collectDataFromSapphireReportTest("UK-SAREP"))
 
 if __name__ == "__main__":
     _base_path = os.getcwd()
