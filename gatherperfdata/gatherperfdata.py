@@ -460,6 +460,9 @@ class TestResult:
         return json_dict
 
     def to_file(self, outfile):
+        if _debug:
+            print("{}\n".format(self.label), file=outfile)
+
         to_login = self.op_results[OpLabels.TO_LOGIN].to_seconds()
         to_main_form = self.op_results[OpLabels.TO_MAIN_FORM].to_seconds()
         print("{:.3f}\n{:.3f}".format(to_login, to_main_form), file=outfile)
@@ -681,7 +684,7 @@ def add_benchmark_data_as_op_results(test_result, tc_log_file, lines_to_parse=[4
         test_result.runTimes.append(seconds_from_stopwatch_line(lines[line_idx]))  #
 
 
-def collect_nav_trim_test(test_dir, test_label):
+def nav_trim_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
     test_result.op_labels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
 
@@ -702,7 +705,7 @@ def collect_nav_trim_test(test_dir, test_label):
     return test_result
 
 
-def collect_benchmark_test(test_dir, test_label):
+def benchmark_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
     test_result.op_labels = ["LayoutPaint", "Refresh"]
 
@@ -714,7 +717,7 @@ def collect_benchmark_test(test_dir, test_label):
     return test_result
 
 
-def collect_fr_filesize_data(test_dir, test_label):
+def fr_file_size_collector(test_dir, test_label):
     test_result = TestResult(test_label)
     test_result.op_labels = ["BuildDesign"]
 
@@ -732,7 +735,7 @@ def collect_fr_filesize_data(test_dir, test_label):
     return test_result
 
 
-def collect_mono_to_duo_test(test_dir, test_label):
+def mono_to_duo_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
     test_result.op_labels = ["LayoutPaint", "Refresh", "Delete"]
 
@@ -750,7 +753,7 @@ def collect_mono_to_duo_test(test_dir, test_label):
     return test_result
 
 
-def collect_frame_design_test(test_dir, test_label):
+def frame_design_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
     test_result.op_labels = ["Design"]
 
@@ -765,7 +768,7 @@ def collect_frame_design_test(test_dir, test_label):
     return test_result
 
 
-def collect_hip_to_hip_plus_test(test_dir, test_label):
+def hip_to_hip_plus_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
     test_result.op_labels = ["Build", "Design", "LayoutPaint", "Refresh"]
 
@@ -791,7 +794,7 @@ def collect_hip_to_hip_plus_test(test_dir, test_label):
     return test_result
 
 
-def collect_uk_thousand_objects_test(test_dir, test_label):
+def uk_thousand_objects_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
     test_result.op_labels = ["LayoutPaint", "Refresh", "PaintZoomed", "RefreshZoomed"]
 
@@ -800,6 +803,24 @@ def collect_uk_thousand_objects_test(test_dir, test_label):
     # collect benchmark results
     tc_log_file = get_testlog_path(test_dir)
     add_benchmark_data_as_op_results(test_result, tc_log_file, [4, 6, 14, 16])  # two runs
+
+    return test_result
+
+
+def output_pdf_test_collector(test_dir, test_label):
+    test_result = TestResult(test_label)
+    test_result.op_labels = ["PDFOutput", "FileSize"]
+
+    collect_pamir_start_and_duration(test_result, test_dir)
+
+    # collect the total time of rendering all output PDF pages from "Pamir-perf.log"
+    perf_log_file = get_perf_log_path(test_dir)
+    lines = get_matching_lines_from_file(perf_log_file, "Operation.OutputPrintManagerOp")
+    test_result.runTimes.append(seconds_from_perf_line(lines[0]))
+
+    # collect file size of the saved Pamir job
+    tc_log_file = get_testlog_path(test_dir)
+    collect_file_size_for_test(test_result, tc_log_file)
 
     return test_result
 
@@ -853,23 +874,23 @@ def main(base_path):
         output_timings_to_txt_file(timing_array, _output_file)
 
     with open(os.path.join(base_path, "extra-results.txt"), mode="w") as _output_file:
-        timing_array2 = [extra_test(collect_nav_trim_test, base_path, "NTT4"),
-                         extra_test(collect_mono_to_duo_test, base_path, "MDT5"),
-                         extra_test(collect_frame_design_test, base_path, "HD4_FDT6"),
-                         extra_test(collect_frame_design_test, base_path, "CHP_FDT10"),
-                         extra_test(collect_hip_to_hip_plus_test, base_path, "FR-HHT7"),
-                         extra_test(collect_hip_to_hip_plus_test, base_path, "UK-HHT8"),
-                         extra_test(collect_benchmark_test, base_path, "FR_LWS9"),
-                         extra_test(collect_uk_thousand_objects_test, base_path, "UK_TDOT17"),
-                         extra_test(collect_benchmark_test, base_path, "SW_FBMT11"),
-                         extra_test(collect_benchmark_test, base_path, "UK_HT1_FBMT12"),
-                         #    timing_array.append(collectDataFromOutputPDFTests("ISOLA_PDF13"))
-                         #    timing_array.append(collectDataFromOutputPDFTests("UK_LayoutPDF14"))
+        timing_array2 = [extra_test(nav_trim_test_collector, base_path, "NTT4"),
+                         extra_test(mono_to_duo_test_collector, base_path, "MDT5"),
+                         extra_test(frame_design_test_collector, base_path, "HD4_FDT6"),
+                         extra_test(frame_design_test_collector, base_path, "CHP_FDT10"),
+                         extra_test(hip_to_hip_plus_test_collector, base_path, "FR-HHT7"),
+                         extra_test(hip_to_hip_plus_test_collector, base_path, "UK-HHT8"),
+                         extra_test(benchmark_test_collector, base_path, "FR_LWS9"),
+                         extra_test(uk_thousand_objects_test_collector, base_path, "UK_TDOT17"),
+                         extra_test(benchmark_test_collector, base_path, "SW_FBMT11"),
+                         extra_test(benchmark_test_collector, base_path, "UK_HT1_FBMT12"),
+                         extra_test(output_pdf_test_collector, base_path, "ISOLA_PDF13"),
+                         extra_test(output_pdf_test_collector, base_path, "UK_LayoutPDF14"),
                          #    timing_array.append(collectDataFromUK_DisableHangerHipToHipTest("UK-DISH15"))
                          #    timing_array.append(collectDataFromUK_EnableHangerHipToHipTest("UK-ENAH16"))
-                         extra_test(collect_fr_filesize_data, base_path, "FR-MST18"),
-                         extra_test(collect_fr_filesize_data, base_path, "FR-SST19"),
-                         extra_test(collect_fr_filesize_data, base_path, "FR-DST20"),
+                         extra_test(fr_file_size_collector, base_path, "FR-MST18"),
+                         extra_test(fr_file_size_collector, base_path, "FR-SST19"),
+                         extra_test(fr_file_size_collector, base_path, "FR-DST20"),
                          #    timing_array.append(collectDataFromUK_OpenAndSaveTest("UK-OST21"))
                          #    timing_array.append(collectDataFromMultipleDesignCasesTest("T22-FR-MDC"))
                          #    timing_array.append(collectDataFromFrameDesignWithScabTest("T23-FR-SCAB"))
