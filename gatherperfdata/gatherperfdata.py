@@ -746,17 +746,36 @@ def collect_mono_to_duo_test(test_dir, test_label):
     test_result = TestResult(test_label)
     test_result.op_labels = ["LayoutPaint", "Refresh", "Delete"]
 
-    tc_log_file = get_testlog_path(test_dir)
-    perf_log_file = get_perf_log_path(test_dir)
     collect_startup_data(test_result, test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
 
     # collect benchmark results
+    tc_log_file = get_testlog_path(test_dir)
     add_benchmark_data_as_op_results(test_result, tc_log_file)
 
     # timings for other operations
+    perf_log_file = get_perf_log_path(test_dir)
     lines = get_matching_lines_from_file(perf_log_file, "Action.Execute\tComplete")
     test_result.runTimes.append(search_seconds_from_perf_lines(lines, "Delete"))
+
+    return test_result
+
+
+def collect_frame_design_test(test_dir, test_label):
+    if not os.path.exists(test_dir):
+        return None
+
+    test_result = TestResult(test_label)
+    test_result.op_labels = ["Design"]
+
+    collect_startup_data(test_result, test_dir)
+    collect_pamir_start_and_duration(test_result, test_dir)
+
+    # collect benchmark results - but only take design
+    tc_log_file = get_testlog_path(test_dir)
+    lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults");
+
+    test_result.runTimes.append(seconds_from_stopwatch_line(lines[11]))  # Design.AverageTime
 
     return test_result
 
@@ -808,8 +827,8 @@ def main(base_path):
     with open(os.path.join(base_path, "extra-results.txt"), mode="w") as _output_file:
         timing_array2 = [extra_test(collect_nav_trim_test, base_path, "NTT4"),
                          extra_test(collect_mono_to_duo_test, base_path, "MDT5"),
-                         #    timing_array.append(collectDataFromFrameDesignTest("HD4_FDT6"))
-                         #    timing_array.append(collectDataFromFrameDesignTest("CHP_FDT10"))
+                         extra_test(collect_frame_design_test, base_path, "HD4_FDT6"),
+                         extra_test(collect_frame_design_test, base_path, "CHP_FDT10"),
                          #    timing_array.append(collectDataFromHipToHipPlusTest("FR-HHT7"))
                          #    timing_array.append(collectDataFromHipToHipPlusTest("UK-HHT8"))
                          extra_test(collect_benchmark_test, base_path, "FR_LWS9"),
