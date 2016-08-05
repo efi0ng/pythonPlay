@@ -575,11 +575,11 @@ def collect_pamir_start_and_duration(test_result, test_dir):
     return
 
 
-def collect_file_size_for_test(test_result, filename, search_string):
+def collect_file_size_for_test(test_result, filename):
     """Collect data from the TestComplete Test logs for
     the Pamir file size"""
 
-    lines = get_matching_lines_from_file(filename, search_string)
+    lines = get_matching_lines_from_file(filename, "Pamir job:")
     if _debug:
         debug_print_results(filename, lines, _output_file)
     if len(lines) > 0:
@@ -730,11 +730,10 @@ def collect_fr_filesize_data(test_dir, test_label):
 
     # collect the total time of designing all frames from "Pamir-perf.log"
     lines = get_matching_lines_from_file(perf_log_file, "BuildDesign")
-    for line in lines:
-        test_result.runTimes.append(get_total_time_from_perf_line(line))
+    test_result.runTimes.append(get_total_time_from_perf_line(lines[0]))
 
     # collect file size of the saved Pamir job
-    collect_file_size_for_test(test_result, tc_log_file, "Pamir job:")
+    collect_file_size_for_test(test_result, tc_log_file)
 
     return test_result
 
@@ -776,6 +775,36 @@ def collect_frame_design_test(test_dir, test_label):
     lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults");
 
     test_result.runTimes.append(seconds_from_stopwatch_line(lines[11]))  # Design.AverageTime
+
+    return test_result
+
+
+def collect_hip_to_hip_plus_test(test_dir, test_label):
+    if not os.path.exists(test_dir):
+        return None
+
+    test_result = TestResult(test_label)
+    test_result.op_labels = ["Build", "Design", "LayoutPaint", "Refresh"]
+
+    collect_startup_data(test_result, test_dir)
+    collect_pamir_start_and_duration(test_result, test_dir)
+
+    perf_log_file = get_perf_log_path(test_dir)
+
+    # collect the total time of building all frames from "Pamir-perf.log"
+    lines = get_matching_lines_from_file(perf_log_file, "BuildFrame")
+    test_result.runTimes.append(get_total_time_from_perf_line(lines[0]))
+
+    # collect the total time of designing all frames from "Pamir-perf.log"
+    lines = get_matching_lines_from_file(perf_log_file, "BuildDesign")
+    test_result.runTimes.append(get_total_time_from_perf_line(lines[0]))
+
+    # collect benchmark results
+    tc_log_file = get_testlog_path(test_dir)
+    add_benchmark_data_as_op_results(test_result, tc_log_file)
+
+    # collect file size of the saved Pamir job
+    collect_file_size_for_test(test_result, tc_log_file)
 
     return test_result
 
@@ -829,8 +858,8 @@ def main(base_path):
                          extra_test(collect_mono_to_duo_test, base_path, "MDT5"),
                          extra_test(collect_frame_design_test, base_path, "HD4_FDT6"),
                          extra_test(collect_frame_design_test, base_path, "CHP_FDT10"),
-                         #    timing_array.append(collectDataFromHipToHipPlusTest("FR-HHT7"))
-                         #    timing_array.append(collectDataFromHipToHipPlusTest("UK-HHT8"))
+                         extra_test(collect_hip_to_hip_plus_test, base_path, "FR-HHT7"),
+                         extra_test(collect_hip_to_hip_plus_test, base_path, "UK-HHT8"),
                          extra_test(collect_benchmark_test, base_path, "FR_LWS9"),
                          #    timing_array.append(collectDataFromUK_ThousandDrawingObjectsTest("UK_TDOT17"))
                          extra_test(collect_benchmark_test, base_path, "SW_FBMT11"),
