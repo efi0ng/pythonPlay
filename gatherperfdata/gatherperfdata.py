@@ -569,9 +569,12 @@ def collect_startup_data(test_result, test_dir):
 
 
 def collect_pamir_start_and_duration(test_result, test_dir):
+    """Use Pamir start and runtime to determine test duration. Also log Pamir startup and shutdown timings."""
     start, duration = collect_start_and_duration_from_pamir_log(test_dir)
     test_result.start_time = start
     test_result.duration = duration
+
+    collect_startup_data(test_result, test_dir)
     return
 
 
@@ -596,7 +599,6 @@ def collect_basic_test_data(test_dir: str, test_label: str, perf_search_str: str
 
     test_result = TestResult(test_label)
 
-    collect_startup_data(test_result, test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
     perf_filename = get_perf_log_path(test_dir)
     data = get_matching_lines_from_file(perf_filename, perf_search_str)
@@ -666,24 +668,24 @@ def collect_basic_results(test_dir, test_spec):
 # ---------------------------------------------------------
 
 
-def add_benchmark_data_as_op_results(test_result, tc_log_file):
+def add_benchmark_data_as_op_results(test_result, tc_log_file, lines_to_parse=[4, 6]):
+    """Parse times from TC stopwatch lines relating to Benchmark Results.
+    Default lines to parse are:
+        * 4 = Paint.TotalTime
+        * 6 = Refresh.AverageTime"""
     lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
     if _debug:
         debug_print_results(tc_log_file, lines, _output_file)
 
-    test_result.runTimes.append(seconds_from_stopwatch_line(lines[4]))  # Paint.TotalTime
-    test_result.runTimes.append(seconds_from_stopwatch_line(lines[6]))  # Refresh.AverageTime
+    for line_idx in lines_to_parse:
+        test_result.runTimes.append(seconds_from_stopwatch_line(lines[line_idx]))  #
 
 
 def collect_nav_trim_test(test_dir, test_label):
-    if not os.path.exists(test_dir):
-        return None
-
     test_result = TestResult(test_label)
     test_result.op_labels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
 
     perf_log_file = get_perf_log_path(test_dir)
-    collect_startup_data(test_result, test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
 
     # collect benchmark results
@@ -701,13 +703,9 @@ def collect_nav_trim_test(test_dir, test_label):
 
 
 def collect_benchmark_test(test_dir, test_label):
-    if not os.path.exists(test_dir):
-        return None
-
     test_result = TestResult(test_label)
     test_result.op_labels = ["LayoutPaint", "Refresh"]
 
-    collect_startup_data(test_result, test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
 
     tc_log_file = get_testlog_path(test_dir)
@@ -717,15 +715,11 @@ def collect_benchmark_test(test_dir, test_label):
 
 
 def collect_fr_filesize_data(test_dir, test_label):
-    if not os.path.exists(test_dir):
-        return None
-
     test_result = TestResult(test_label)
     test_result.op_labels = ["BuildDesign"]
 
     tc_log_file = get_testlog_path(test_dir)
     perf_log_file = get_perf_log_path(test_dir)
-    collect_startup_data(test_result, test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
 
     # collect the total time of designing all frames from "Pamir-perf.log"
@@ -739,13 +733,9 @@ def collect_fr_filesize_data(test_dir, test_label):
 
 
 def collect_mono_to_duo_test(test_dir, test_label):
-    if not os.path.exists(test_dir):
-        return None
-
     test_result = TestResult(test_label)
     test_result.op_labels = ["LayoutPaint", "Refresh", "Delete"]
 
-    collect_startup_data(test_result, test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
 
     # collect benchmark results
@@ -761,13 +751,9 @@ def collect_mono_to_duo_test(test_dir, test_label):
 
 
 def collect_frame_design_test(test_dir, test_label):
-    if not os.path.exists(test_dir):
-        return None
-
     test_result = TestResult(test_label)
     test_result.op_labels = ["Design"]
 
-    collect_startup_data(test_result, test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
 
     # collect benchmark results - but only take design
@@ -780,13 +766,9 @@ def collect_frame_design_test(test_dir, test_label):
 
 
 def collect_hip_to_hip_plus_test(test_dir, test_label):
-    if not os.path.exists(test_dir):
-        return None
-
     test_result = TestResult(test_label)
     test_result.op_labels = ["Build", "Design", "LayoutPaint", "Refresh"]
 
-    collect_startup_data(test_result, test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
 
     perf_log_file = get_perf_log_path(test_dir)
@@ -805,6 +787,19 @@ def collect_hip_to_hip_plus_test(test_dir, test_label):
 
     # collect file size of the saved Pamir job
     collect_file_size_for_test(test_result, tc_log_file)
+
+    return test_result
+
+
+def collect_uk_thousand_objects_test(test_dir, test_label):
+    test_result = TestResult(test_label)
+    test_result.op_labels = ["LayoutPaint", "Refresh", "PaintZoomed", "RefreshZoomed"]
+
+    collect_pamir_start_and_duration(test_result, test_dir)
+
+    # collect benchmark results
+    tc_log_file = get_testlog_path(test_dir)
+    add_benchmark_data_as_op_results(test_result, tc_log_file, [4, 6, 14, 16])  # two runs
 
     return test_result
 
@@ -838,6 +833,10 @@ def basic_test(base_path, test_spec: TestSpec):
 def extra_test(collector, base_path, test_label):
     """Collect data from extra test run"""
     test_dir = test_dir_from_label(base_path, test_label)
+
+    if not os.path.exists(test_dir):
+        return None
+
     return collector(test_dir, test_label)
 
 
@@ -861,7 +860,7 @@ def main(base_path):
                          extra_test(collect_hip_to_hip_plus_test, base_path, "FR-HHT7"),
                          extra_test(collect_hip_to_hip_plus_test, base_path, "UK-HHT8"),
                          extra_test(collect_benchmark_test, base_path, "FR_LWS9"),
-                         #    timing_array.append(collectDataFromUK_ThousandDrawingObjectsTest("UK_TDOT17"))
+                         extra_test(collect_uk_thousand_objects_test, base_path, "UK_TDOT17"),
                          extra_test(collect_benchmark_test, base_path, "SW_FBMT11"),
                          extra_test(collect_benchmark_test, base_path, "UK_HT1_FBMT12"),
                          #    timing_array.append(collectDataFromOutputPDFTests("ISOLA_PDF13"))
