@@ -96,7 +96,7 @@ def get_matching_lines_from_file(filename, tag_to_find):
     results = []
     file = None
     try:
-        file = open(filename, mode="r")
+        file = open(filename, mode="r", errors="ignore")
 
         line = file.readline()
         while line:
@@ -135,7 +135,7 @@ def collect_start_and_duration_from_pamir_log(test_dir):
     first_valid_stamp = None
     last_valid_stamp = None
     try:
-        file = open(log_file, mode="r")
+        file = open(log_file, mode="r", encoding="iso_8859_1", errors="ignore")  # latin-1 encoding
 
         line = file.readline()
         while line:
@@ -148,8 +148,6 @@ def collect_start_and_duration_from_pamir_log(test_dir):
                     last_valid_stamp = match.group(1)
             line = file.readline()
 
-        if _debug:
-            print("Search results were: {} {}".format(first_valid_stamp, last_valid_stamp))
     except IOError:
         pass
     finally:
@@ -242,7 +240,7 @@ def get_pamir_version_from_log(test_dir):
 
     file = None
     try:
-        file = open(log_file, mode="r")
+        file = open(log_file, mode="r", encoding="iso_8859_1", errors="ignore")
 
         line = file.readline()
         while line:
@@ -271,9 +269,6 @@ def get_pamir_version_from_log(test_dir):
         except ValueError:
             print("Error: failed to parse revision number from '{}'".format(version_full))
             revision = 0
-
-    if _debug:
-        print("Version search results were: {}, {}, {}".format(version_short, version_full, revision))
 
     return version_short, version_full, revision
 
@@ -639,8 +634,6 @@ def collect_file_size_for_test(test_result, filename):
     the Pamir file size"""
 
     lines = get_matching_lines_from_file(filename, "Pamir job:")
-    if _debug:
-        debug_print_results(filename, lines, _output_file)
     if len(lines) > 0:
         file_size = kilobytes_from_file_size_line(lines[0])
         result = OpResult(OpLabels.FILE_SIZE, file_size, lines[0])
@@ -658,8 +651,6 @@ def collect_basic_test_data(test_dir: str, test_label: str, perf_search_str: str
     collect_pamir_start_and_duration(test_result, test_dir)
     perf_filename = get_perf_log_path(test_dir)
     data = get_matching_lines_from_file(perf_filename, perf_search_str)
-    if _debug:
-        debug_print_results(perf_filename, data, _output_file)
 
     for dataRow in data:
         test_result.runTimes.append(get_total_time_from_perf_line(dataRow))
@@ -724,11 +715,15 @@ def collect_basic_results(test_dir, test_spec):
 # ---------------------------------------------------------
 
 
-def add_benchmark_run_times(test_result, tc_log_file, lines_to_parse=[4, 6]):
+def add_benchmark_run_times(test_result, tc_log_file, lines_to_parse=None):
     """Parse times from TC stopwatch lines relating to Benchmark Results.
     Default lines to parse are:
         * 4 = Paint.TotalTime
         * 6 = Refresh.AverageTime"""
+
+    if lines_to_parse is None:
+        lines_to_parse = [4, 6]
+
     lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
 
     for line_idx in lines_to_parse:
@@ -762,8 +757,6 @@ def nav_trim_test_collector(test_dir, test_label):
     test_result.runTimes.append(search_seconds_from_perf_lines(lines, "Toggle automatic framing zone"))
     test_result.runTimes.append(search_seconds_from_perf_lines(lines, "Trim/Extend"))
 
-    if _debug: 
-        debug_print_results(perf_log_file, lines, _output_file)
     return test_result
 
 
@@ -823,7 +816,7 @@ def frame_design_test_collector(test_dir, test_label):
 
     # collect benchmark results - but only take design
     tc_log_file = get_testlog_path(test_dir)
-    lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults");
+    lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
 
     test_result.runTimes.append(seconds_from_stopwatch_line(lines[11]))  # Design.AverageTime
 
@@ -898,7 +891,7 @@ def uk_enable_hanger_hip_test_collector(test_dir, test_label):
     test_result.op_labels = ["Build", "Design"]
 
     # TODO: Deal with select metalwork
-    #collectStartupAndSelectMetalworkDataForTest(timingData, (tcLogFile,"TC.Stopwatch"))
+    # collectStartupAndSelectMetalworkDataForTest(timingData, (tcLogFile,"TC.Stopwatch"))
     collect_pamir_start_and_duration(test_result, test_dir)
 
     perf_log_file = get_perf_log_path(test_dir)
@@ -920,9 +913,6 @@ def test_dir_from_label(base_path, test_label):
 
 
 def output_timings_to_txt_file(test_results, outfile):
-    if _debug:
-        print("\n===========================\n", file=outfile)
-
     for td in test_results:
         if td is None:
             continue
@@ -972,15 +962,15 @@ def main(base_path):
                          extra_test(output_pdf_test_collector, base_path, "ISOLA_PDF13"),
                          extra_test(output_pdf_test_collector, base_path, "UK_LayoutPDF14"),
                          extra_test(uk_disable_hanger_hip_test_collector, base_path, "UK-DISH15"),
-                         #extra_test(uk_enable_hanger_hip_test_collector, base_path, "UK-ENAH16"),
+                         # extra_test(uk_enable_hanger_hip_test_collector, base_path, "UK-ENAH16"),
                          extra_test(fr_file_size_collector, base_path, "FR-MST18"),
                          extra_test(fr_file_size_collector, base_path, "FR-SST19"),
                          extra_test(fr_file_size_collector, base_path, "FR-DST20"),
-                         #    timing_array.append(collectDataFromUK_OpenAndSaveTest("UK-OST21"))
-                         #    timing_array.append(collectDataFromMultipleDesignCasesTest("T22-FR-MDC"))
-                         #    timing_array.append(collectDataFromFrameDesignWithScabTest("T23-FR-SCAB"))
-                         #    timing_array.append(collectDataFromFullSynchronisationTest("UK-SYNC"))
-                         #    timing_array.append(collectDataFromSapphireReportTest("UK-SAREP"))
+                         # timing_array.append(collectDataFromUK_OpenAndSaveTest("UK-OST21"))
+                         # timing_array.append(collectDataFromMultipleDesignCasesTest("T22-FR-MDC"))
+                         # timing_array.append(collectDataFromFrameDesignWithScabTest("T23-FR-SCAB"))
+                         # timing_array.append(collectDataFromFullSynchronisationTest("UK-SYNC"))
+                         # timing_array.append(collectDataFromSapphireReportTest("UK-SAREP"))
                          ]
         output_timings_to_txt_file(timing_array2, _output_file)
 
