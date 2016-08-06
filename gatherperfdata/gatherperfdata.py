@@ -14,7 +14,6 @@ for the baseline and extra performance tests reporting spreadsheets:
 DPT1, DPT2, BBT3, NTT4, MDT5, HD4_FDT6, FR_HHT7, UK_HHT8, FR_LWS9 and CHP_FDT10
 Several more tests have been added since.
 """
-# TODO: Remove knowledge of test folder structure from lowest level funcs. Supply them with log file names.
 
 # globals
 
@@ -55,27 +54,8 @@ BuildInfo
 
 # ---------------------------------------------------------
 # General parsing and conversion functions
-# TODO: should not have knowledge of test folder structure
+# Methods here should not have knowledge of test folder structure
 # ---------------------------------------------------------
-
-
-def debug_print_results(filename, data, outfile=sys.stdout):
-    print("[%s]" % filename, file=outfile)
-
-    for line in data:
-        print(line, file=outfile)
-
-
-def get_test_log_path(test_dir):
-    return os.path.join(test_dir, "testrun.log")
-
-
-def get_perf_log_path(test_dir):
-    return os.path.join(test_dir, "data/pamir-perf.log")
-
-
-def get_pamir_log_path(test_dir):
-    return os.path.join(test_dir, "data/pamir.log")
 
 
 def get_matching_lines_from_file(filename, tag_to_find):
@@ -108,7 +88,7 @@ _TIMESTAMP_PAMIR_FORMAT = "%Y-%m-%d %H:%M:%S,%f"
 _TIMESTAMP_JSON_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 
 
-def collect_start_and_duration_from_pamir_log(test_dir):
+def parse_start_and_duration_from_pamir_log(filename):
     """Use first and last long entry in the Pamir log as a guide for when test started and how long it ran.
     Return tuple (start, duration) where start is a datetime and duration is milliseconds (integer).
     If collection fails, start_time may be set to file date time or current time but duration is always set to 0."""
@@ -117,13 +97,11 @@ def collect_start_and_duration_from_pamir_log(test_dir):
     #   2016-05-26 12:28:19,929 Serializer.ArchiveTypeResolver INFO : Processing assemblies on thread 5
     _TIMESTAMP_REGEX = r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})"
 
-    log_file = get_pamir_log_path(test_dir)
-
     file = None
     first_valid_stamp = None
     last_valid_stamp = None
     try:
-        file = open(log_file, mode="r", encoding="iso_8859_1", errors="ignore")  # latin-1 encoding
+        file = open(filename, mode="r", encoding="iso_8859_1", errors="ignore")  # latin-1 encoding
 
         line = file.readline()
         while line:
@@ -143,7 +121,7 @@ def collect_start_and_duration_from_pamir_log(test_dir):
             file.close()
 
     if first_valid_stamp is None:
-        start_time = get_file_datetime(log_file)
+        start_time = get_file_datetime(filename)
     else:
         start_time = datetime.strptime(first_valid_stamp, _TIMESTAMP_PAMIR_FORMAT)
 
@@ -211,8 +189,8 @@ def search_seconds_from_perf_lines(lines, search_string):
     return 0.0
 
 
-def get_pamir_version_from_log(test_dir):
-    """Get Pamir version information from log in given test dir.
+def get_pamir_version_from_log(filename):
+    """Get Pamir version information from log with given filename.
     Returns (version_short, version_full, revision) a tuple of strings."""
     # capture Pamir version information from lines like:
     # 2016-05-26 12:43:28,262 MiTek.Pamir INFO : Pamir 5.1.0 (Internal WIP 5.1.0.3149 (r70160)) starting
@@ -221,14 +199,13 @@ def get_pamir_version_from_log(test_dir):
 
     _PAMIR_VERSION_LINE_REGEX = r"Pamir (\d{1}.\d{1}.\d{1}) \((.+)\) start"
 
-    log_file = get_pamir_log_path(test_dir)
     version_short = ""
     version_full = ""
     revision = 0
 
     file = None
     try:
-        file = open(log_file, mode="r", encoding="iso_8859_1", errors="ignore")
+        file = open(filename, mode="r", encoding="iso_8859_1", errors="ignore")
 
         line = file.readline()
         while line:
@@ -518,7 +495,19 @@ class TestSuiteRun:
 
 # ---------------------------------------------------------
 # Data collection - general
+# These methods can have knowledge of the test folder structures
 # ---------------------------------------------------------
+
+def get_test_log_path(test_dir):
+    return os.path.join(test_dir, "testrun.log")
+
+
+def get_perf_log_path(test_dir):
+    return os.path.join(test_dir, "data/pamir-perf.log")
+
+
+def get_pamir_log_path(test_dir):
+    return os.path.join(test_dir, "data/pamir.log")
 
 
 def collect_tc_stopwatch_data(test_result, test_dir, stopwatch_ops=None):
@@ -545,7 +534,7 @@ def collect_tc_stopwatch_data(test_result, test_dir, stopwatch_ops=None):
 
 def collect_pamir_start_and_duration(test_result, test_dir):
     """Use Pamir start and runtime to determine test duration."""
-    start, duration = collect_start_and_duration_from_pamir_log(test_dir)
+    start, duration = parse_start_and_duration_from_pamir_log(get_pamir_log_path(test_dir))
     test_result.start_time = start
     test_result.duration = duration
     return
@@ -565,7 +554,9 @@ def collect_file_size_for_test(test_result, filename):
 
 
 def collect_build_info_from_test(base_path, test_label):
-    version_info = get_pamir_version_from_log(test_dir_from_label(base_path, test_label))
+    """For test with given label under base_path, extract build information from Pamir log"""
+    test_dir = test_dir_from_label(base_path, test_label)
+    version_info = get_pamir_version_from_log(get_pamir_log_path(test_dir))
     return BuildInfo(version_info[0], version_info[1], version_info[2])
 
 
