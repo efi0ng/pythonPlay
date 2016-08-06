@@ -14,20 +14,7 @@ for the baseline and extra performance tests reporting spreadsheets:
 DPT1, DPT2, BBT3, NTT4, MDT5, HD4_FDT6, FR_HHT7, UK_HHT8, FR_LWS9 and CHP_FDT10
 Several more tests have been added since.
 """
-
-"""Change History:
-1. Updated the comments above to include new extra tests added.
-2. Added code to collect data from MDT4 (MonoToDuoTest) log files
-3. Added code to collect data from UK_HHT8 (UK-HipTpHipPlusTest) log files
-5. Modified HHT7 to FR_HHT7
-4. Added code to collect data from FR_LWS9 (FR_LayoutWithSectionsTest) log files
-5. Added code to collect data from CHP_FDT10 (FR_ChapeauFramDesignTest) log files
-6. Modified FDT4 to HD4_FDT4
-7. Added several new tests
-.
-.
-10. Added JSon output for the basic tests
-"""
+# TODO: Remove knowledge of test folder structure from lowest level funcs. Supply them with log file names.
 
 # globals
 
@@ -68,6 +55,7 @@ BuildInfo
 
 # ---------------------------------------------------------
 # General parsing and conversion functions
+# TODO: should not have knowledge of test folder structure
 # ---------------------------------------------------------
 
 
@@ -78,7 +66,7 @@ def debug_print_results(filename, data, outfile=sys.stdout):
         print(line, file=outfile)
 
 
-def get_testlog_path(test_dir):
+def get_test_log_path(test_dir):
     return os.path.join(test_dir, "testrun.log")
 
 
@@ -400,15 +388,14 @@ def test_machine_from_host():
 class TestResult:
     """Collected timing information for a test"""
     def __init__(self, test_label: str):
-        self.selectMetalwork = None
         self.sapphireReport = None
         self.sapphireShutdown = None
         self.twenty20Shutdown = None
         self.op_results = {}
-        self.runTimes = []
+        self.run_times = []
         # for JSon support
         self.label = test_label
-        self.op_labels = []
+        self.run_labels = []
         self.start_time = None  # datetime
         self.duration = 0  # milliseconds
         self.status = "pass"
@@ -431,10 +418,6 @@ class TestResult:
         for op in self.op_results.values():
             json_op_results.append(op.to_json_object())
 
-        if self.selectMetalwork is not None:
-            op = OpResult(OpLabels.SELECT_METALWORK, sec_to_ms(self.selectMetalwork))
-            json_op_results.append(op.to_json_object())
-
         if self.sapphireReport is not None:
             op = OpResult(OpLabels.SAPPHIRE_REPORT, sec_to_ms(self.sapphireReport))
             json_op_results.append(op.to_json_object())
@@ -447,26 +430,26 @@ class TestResult:
             op = OpResult(OpLabels.SAPPHIRE_SHUTDOWN, sec_to_ms(self.sapphireShutdown))
             json_op_results.append(op.to_json_object())
 
-        if len(self.runTimes) != 0:
-            for key, runTime in enumerate(self.runTimes):
-                op = OpResult(self.op_labels[key], sec_to_ms(runTime))
+        if len(self.run_times) != 0:
+            for key, runTime in enumerate(self.run_times):
+                op = OpResult(self.run_labels[key], sec_to_ms(runTime))
                 json_op_results.append(op.to_json_object())
 
         return json_dict
 
     def to_file(self, outfile):
         if _debug:
-            print("{}\n".format(self.label), file=outfile)
+            print("{}".format(self.label), file=outfile)
 
         to_login = self.op_results[OpLabels.TO_LOGIN].to_seconds()
         to_main_form = self.op_results[OpLabels.TO_MAIN_FORM].to_seconds()
         print("{:.3f}\n{:.3f}".format(to_login, to_main_form), file=outfile)
 
-        if self.selectMetalwork is not None:
-            print("{:.3f}".format(self.selectMetalwork), file=outfile)
+        if OpLabels.SELECT_METALWORK in self.op_results:
+            print("{:.3f}".format(self.op_results[OpLabels.SELECT_METALWORK].to_seconds()), file=outfile)
 
-        if len(self.runTimes) != 0:
-            for runTime in self.runTimes:
+        if len(self.run_times) != 0:
+            for runTime in self.run_times:
                 print("{:.3f}".format(runTime), file=outfile)
 
         if self.sapphireReport is not None:
@@ -537,95 +520,34 @@ class TestSuiteRun:
 # Data collection - general
 # ---------------------------------------------------------
 
-_SEARCH_STRING_STOPWATCH = "TC.Stopwatch"
 
-
-def collect_startup_data(test_result, test_dir):
+def collect_tc_stopwatch_data(test_result, test_dir, stopwatch_ops=None):
     """Collect timing from the TestComplete Test logs for
     the startup and shutdown."""
 
-    filename = get_testlog_path(test_dir)
-    lines = get_matching_lines_from_file(filename, _SEARCH_STRING_STOPWATCH)
+    if stopwatch_ops is None:
+        stopwatch_ops = {
+            0: OpLabels.TO_LOGIN,
+            1: OpLabels.TO_MAIN_FORM,
+            2: OpLabels.PAMIR_SHUTDOWN,
+        }
 
-    if len(lines) >= 2:
-        test_result.add_op_result(OpResult(
-            OpLabels.TO_LOGIN,
-            milliseconds_from_stopwatch_line(lines[0]),
-            lines[0]))
-        test_result.add_op_result(OpResult(
-            OpLabels.TO_MAIN_FORM,
-            milliseconds_from_stopwatch_line(lines[1]),
-            lines[1]))
+    filename = get_test_log_path(test_dir)
+    lines = get_matching_lines_from_file(filename, "TC.Stopwatch")
 
-    if len(lines) == 3:
-        test_result.add_op_result(OpResult(
-            OpLabels.PAMIR_SHUTDOWN,
-            milliseconds_from_stopwatch_line(lines[2]),
-            lines[2]))
+    for idx, line in enumerate(lines):
+        if idx in stopwatch_ops:
+            op_result = OpResult(stopwatch_ops[idx], milliseconds_from_stopwatch_line(line), line)
+            test_result.add_op_result(op_result)
 
     return
 
-# TODO: Provide a dictionary argument to startup collector that maps OpLabels to lines.
-#       Define constants for the variants. Call startup with variant if not the default.
-# def collectStartupAndSelectMetalworkDataForTest(timingData, tcLogSpec):
-#     '''Collect data from the TestComplete Test logs for
-#     the startup and shutdown plus an additional operation of select Metalwork'''
-#
-#     data = getDataFromFile(tcLogSpec)
-#     if debug: printResults(tcLogSpec[0], data, outputfile)
-#     if (len(data) >= 2):
-#         timingData.startToLogin = secondsFromStopwatchLine(data[0])
-#         timingData.loginToMainForm = secondsFromStopwatchLine(data[1])
-#     if (len(data) >= 3):
-#         timingData.selectMetalwork = secondsFromStopwatchLine(data[2])
-#     if (len(data) == 4):
-#         timingData.shutdown = secondsFromStopwatchLine(data[3])
-#     return
-#
-#
-# def collect2020StartupDataForTest(timingData, tcLogSpec):
-#     '''Collect data from the TestComplete Test logs for
-#     the startup and shutdown.'''
-#
-#     data = getDataFromFile(tcLogSpec)
-#     if debug: printResults(tcLogSpec[0], data, outputfile)
-#     if (len(data) >= 2):
-#         timingData.startToLogin = secondsFromStopwatchLine(data[0])
-#         timingData.loginToMainForm = secondsFromStopwatchLine(data[1])
-#     if (len(data) >= 3):
-#         timingData.pamirShutdown = secondsFromStopwatchLine(data[2])
-#     if (len(data) == 4):
-#         timingData.shutdown = secondsFromStopwatchLine(data[3])
-#
-#     return
-#
-#
-# def collectSapphireStartupAndReportDataForTest(timingData, tcLogSpec):
-#     '''Collect data from the TestComplete Test logs for
-#     the startup and shutdown.'''
-#
-#     data = getDataFromFile(tcLogSpec)
-#     if debug: printResults(tcLogSpec[0], data, outputfile)
-#     if (len(data) >= 2):
-#         timingData.startToLogin = secondsFromStopwatchLine(data[0])
-#         timingData.loginToMainForm = secondsFromStopwatchLine(data[1])
-#     if (len(data) >= 3):
-#         timingData.sapphireReport = secondsFromStopwatchLine(data[2])
-#     if (len(data) >= 4):
-#         timingData.sapphireShutdown = secondsFromStopwatchLine(data[3])
-#     if (len(data) >= 5):
-#         timingData.shutdown = secondsFromStopwatchLine(data[4])
-#
-#     return
-
 
 def collect_pamir_start_and_duration(test_result, test_dir):
-    """Use Pamir start and runtime to determine test duration. Also log Pamir startup and shutdown timings."""
+    """Use Pamir start and runtime to determine test duration."""
     start, duration = collect_start_and_duration_from_pamir_log(test_dir)
     test_result.start_time = start
     test_result.duration = duration
-
-    collect_startup_data(test_result, test_dir)
     return
 
 
@@ -640,22 +562,6 @@ def collect_file_size_for_test(test_result, filename):
         test_result.add_op_result(result)
 
     return
-
-
-def collect_basic_test_data(test_dir: str, test_label: str, perf_search_str: str):
-    """Collect data from the TestComplete and Pamir Performance Test logs for
-    one test."""
-
-    test_result = TestResult(test_label)
-
-    collect_pamir_start_and_duration(test_result, test_dir)
-    perf_filename = get_perf_log_path(test_dir)
-    data = get_matching_lines_from_file(perf_filename, perf_search_str)
-
-    for dataRow in data:
-        test_result.runTimes.append(get_total_time_from_perf_line(dataRow))
-
-    return test_result
 
 
 def collect_build_info_from_test(base_path, test_label):
@@ -683,32 +589,54 @@ def collect_test_suite_run_data(test_suite_run: TestSuiteRun, base_path: str):
 
 
 class TestSpec:
-    def __init__(self, perf_search_str, test_label, op_labels):
+    def __init__(self, perf_search_str, test_label, run_labels):
         self.perf_search_str = perf_search_str
         self.test_label = test_label
-        self.op_labels = op_labels
+        self.run_labels = run_labels
 
 DPT1_TEST = TestSpec(
     test_label="DPT1",
-    op_labels=["Design1", "Check1", "Design2", "Check2", "Design3", "Check3", "Design4", "Check4", "Design5", "Check5"],
+    run_labels=["Design1", "Check1",
+                "Design2", "Check2",
+                "Design3", "Check3",
+                "Design4", "Check4",
+                "Design5", "Check5"],
     perf_search_str="UI.BuildDesign")
 
 DPT2_TEST = TestSpec(
     test_label="DPT2",
-    op_labels=["Design1", "Check1", "Design2", "Check2", "Design3", "Check3", "Design4", "Check4", "Design5", "Check5"],
+    run_labels=["Design1", "Check1",
+                "Design2", "Check2",
+                "Design3", "Check3",
+                "Design4", "Check4",
+                "Design5", "Check5"],
     perf_search_str="UI.BuildDesign")
 
 BBT3_TEST = TestSpec(
     test_label="BBT3",
-    op_labels=["Build1", "Build2", "Build3", "Build4", "Build5", "Build6", "Build7", "Build8", "Build9", "Build10"],
+    run_labels=["Build1", "Build2", "Build3", "Build4", "Build5",
+                "Build6", "Build7", "Build8", "Build9", "Build10"],
     perf_search_str="UI.Build")
 
 
-def collect_basic_results(test_dir, test_spec):
-    data = collect_basic_test_data(test_dir, test_spec.test_label, test_spec.perf_search_str)
-    data.label = test_spec.test_label
-    data.op_labels = test_spec.op_labels
-    return data
+def basic_test_collector(test_dir: str, test_spec: TestSpec):
+    """Collect data from the TestComplete and Pamir Performance Test logs for
+    one test."""
+
+    test_result = TestResult(test_spec.test_label)
+    test_result.run_labels = test_spec.run_labels
+
+    collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
+
+    perf_filename = get_perf_log_path(test_dir)
+    data = get_matching_lines_from_file(perf_filename, test_spec.perf_search_str)
+
+    for dataRow in data:
+        test_result.run_times.append(get_total_time_from_perf_line(dataRow))
+
+    return test_result
+
 
 # ---------------------------------------------------------
 # Other test collection routines
@@ -727,46 +655,48 @@ def add_benchmark_run_times(test_result, tc_log_file, lines_to_parse=None):
     lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
 
     for line_idx in lines_to_parse:
-        test_result.runTimes.append(seconds_from_stopwatch_line(lines[line_idx]))  #
+        test_result.run_times.append(seconds_from_stopwatch_line(lines[line_idx]))  #
 
 
 def add_build_and_design_run_times(test_result, perf_log_file):
     """Collects build and design times, assuming these operations have been run successively from layout"""
     # total time of building all frames
     lines = get_matching_lines_from_file(perf_log_file, "BuildFrame")
-    test_result.runTimes.append(get_total_time_from_perf_line(lines[0]))
+    test_result.run_times.append(get_total_time_from_perf_line(lines[0]))
 
     # total time of designing all frames
     lines = get_matching_lines_from_file(perf_log_file, "BuildDesign")
-    test_result.runTimes.append(get_total_time_from_perf_line(lines[0]))
+    test_result.run_times.append(get_total_time_from_perf_line(lines[0]))
 
 
 def nav_trim_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
+    test_result.run_labels = ["LayoutPaint", "Refresh", "ChangeAutoLevel", "TrimExtend"]
 
     perf_log_file = get_perf_log_path(test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
 
     # collect benchmark results
-    tc_log_file = get_testlog_path(test_dir)
+    tc_log_file = get_test_log_path(test_dir)
     add_benchmark_run_times(test_result, tc_log_file)
 
     # timings for other operations
     lines = get_matching_lines_from_file(perf_log_file, "Action.Execute\tComplete")
-    test_result.runTimes.append(search_seconds_from_perf_lines(lines, "Toggle automatic framing zone"))
-    test_result.runTimes.append(search_seconds_from_perf_lines(lines, "Trim/Extend"))
+    test_result.run_times.append(search_seconds_from_perf_lines(lines, "Toggle automatic framing zone"))
+    test_result.run_times.append(search_seconds_from_perf_lines(lines, "Trim/Extend"))
 
     return test_result
 
 
 def benchmark_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["LayoutPaint", "Refresh"]
+    test_result.run_labels = ["LayoutPaint", "Refresh"]
 
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
 
-    tc_log_file = get_testlog_path(test_dir)
+    tc_log_file = get_test_log_path(test_dir)
     add_benchmark_run_times(test_result, tc_log_file)
 
     return test_result
@@ -774,15 +704,16 @@ def benchmark_test_collector(test_dir, test_label):
 
 def fr_file_size_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["BuildDesign"]
+    test_result.run_labels = ["Design"]
 
-    tc_log_file = get_testlog_path(test_dir)
+    tc_log_file = get_test_log_path(test_dir)
     perf_log_file = get_perf_log_path(test_dir)
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
 
     # collect the total time of designing all frames from "Pamir-perf.log"
     lines = get_matching_lines_from_file(perf_log_file, "BuildDesign")
-    test_result.runTimes.append(get_total_time_from_perf_line(lines[0]))
+    test_result.run_times.append(get_total_time_from_perf_line(lines[0]))
 
     # collect file size of the saved Pamir job
     collect_file_size_for_test(test_result, tc_log_file)
@@ -792,49 +723,52 @@ def fr_file_size_collector(test_dir, test_label):
 
 def mono_to_duo_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["LayoutPaint", "Refresh", "Delete"]
+    test_result.run_labels = ["LayoutPaint", "Refresh", "Delete"]
 
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
 
     # collect benchmark results
-    tc_log_file = get_testlog_path(test_dir)
+    tc_log_file = get_test_log_path(test_dir)
     add_benchmark_run_times(test_result, tc_log_file)
 
     # timings for other operations
     perf_log_file = get_perf_log_path(test_dir)
     lines = get_matching_lines_from_file(perf_log_file, "Action.Execute\tComplete")
-    test_result.runTimes.append(search_seconds_from_perf_lines(lines, "Delete"))
+    test_result.run_times.append(search_seconds_from_perf_lines(lines, "Delete"))
 
     return test_result
 
 
 def frame_design_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["Design"]
+    test_result.run_labels = ["Design"]
 
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
 
     # collect benchmark results - but only take design
-    tc_log_file = get_testlog_path(test_dir)
+    tc_log_file = get_test_log_path(test_dir)
     lines = get_matching_lines_from_file(tc_log_file, "BenchmarkResults")
 
-    test_result.runTimes.append(seconds_from_stopwatch_line(lines[11]))  # Design.AverageTime
+    test_result.run_times.append(seconds_from_stopwatch_line(lines[11]))  # Design.AverageTime
 
     return test_result
 
 
 def hip_to_hip_plus_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["Build", "Design", "LayoutPaint", "Refresh"]
+    test_result.run_labels = ["Build", "Design", "LayoutPaint", "Refresh"]
 
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
 
     perf_log_file = get_perf_log_path(test_dir)
 
     add_build_and_design_run_times(test_result, perf_log_file)
 
     # collect benchmark results
-    tc_log_file = get_testlog_path(test_dir)
+    tc_log_file = get_test_log_path(test_dir)
     add_benchmark_run_times(test_result, tc_log_file)
 
     # collect file size of the saved Pamir job
@@ -845,12 +779,13 @@ def hip_to_hip_plus_test_collector(test_dir, test_label):
 
 def uk_thousand_objects_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["LayoutPaint", "Refresh", "PaintZoomed", "RefreshZoomed"]
+    test_result.run_labels = ["LayoutPaint", "Refresh", "PaintZoomed", "RefreshZoomed"]
 
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
 
     # collect benchmark results
-    tc_log_file = get_testlog_path(test_dir)
+    tc_log_file = get_test_log_path(test_dir)
     add_benchmark_run_times(test_result, tc_log_file, [4, 6, 14, 16])  # two runs
 
     return test_result
@@ -858,17 +793,18 @@ def uk_thousand_objects_test_collector(test_dir, test_label):
 
 def output_pdf_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["PDFOutput", "FileSize"]
+    test_result.run_labels = ["PDFOutput", "FileSize"]
 
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
 
     # collect the total time of rendering all output PDF pages from "Pamir-perf.log"
     perf_log_file = get_perf_log_path(test_dir)
     lines = get_matching_lines_from_file(perf_log_file, "Operation.OutputPrintManagerOp")
-    test_result.runTimes.append(seconds_from_perf_line(lines[0]))
+    test_result.run_times.append(seconds_from_perf_line(lines[0]))
 
     # collect file size of the saved Pamir job
-    tc_log_file = get_testlog_path(test_dir)
+    tc_log_file = get_test_log_path(test_dir)
     collect_file_size_for_test(test_result, tc_log_file)
 
     return test_result
@@ -876,9 +812,10 @@ def output_pdf_test_collector(test_dir, test_label):
 
 def uk_disable_hanger_hip_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["Build", "Design"]
+    test_result.run_labels = ["Build", "Design"]
 
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
 
     perf_log_file = get_perf_log_path(test_dir)
     add_build_and_design_run_times(test_result, perf_log_file)
@@ -888,20 +825,40 @@ def uk_disable_hanger_hip_test_collector(test_dir, test_label):
 
 def uk_enable_hanger_hip_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
-    test_result.op_labels = ["Build", "Design"]
+    test_result.run_labels = ["Build", "Design"]
 
-    # TODO: Deal with select metalwork
-    # collectStartupAndSelectMetalworkDataForTest(timingData, (tcLogFile,"TC.Stopwatch"))
+    metalwork_stopwatch_ops = {
+        0: OpLabels.TO_LOGIN,
+        1: OpLabels.TO_MAIN_FORM,
+        2: OpLabels.SELECT_METALWORK,
+        3: OpLabels.PAMIR_SHUTDOWN,
+    }
+
     collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir, metalwork_stopwatch_ops)
 
     perf_log_file = get_perf_log_path(test_dir)
     add_build_and_design_run_times(test_result, perf_log_file)
 
-    tc_log_file = get_testlog_path(test_dir)
+    tc_log_file = get_test_log_path(test_dir)
     collect_file_size_for_test(test_result, tc_log_file)
 
     return test_result
 
+_twenty20_stopwatch_ops = {
+    0: OpLabels.TO_LOGIN,
+    1: OpLabels.TO_MAIN_FORM,
+    2: OpLabels.PAMIR_SHUTDOWN,
+    3: OpLabels.TWENTY20_SHUTDOWN,
+}
+
+_sapphire_stopwatch_ops = {
+    0: OpLabels.TO_LOGIN,
+    1: OpLabels.TO_MAIN_FORM,
+    2: OpLabels.SAPPHIRE_REPORT,
+    3: OpLabels.SAPPHIRE_SHUTDOWN,
+    4: OpLabels.TWENTY20_SHUTDOWN,
+}
 
 # ---------------------------------------------------------
 # Main program
@@ -920,10 +877,10 @@ def output_timings_to_txt_file(test_results, outfile):
         td.to_file(outfile)
 
 
-def basic_test(base_path, test_spec: TestSpec):
+def basic_test(base_path: str, test_spec: TestSpec):
     """Collect data from basic test run"""
     test_dir = test_dir_from_label(base_path, test_spec.test_label)
-    return collect_basic_results(test_dir, test_spec)
+    return basic_test_collector(test_dir, test_spec)
 
 
 def extra_test(collector, base_path, test_label):
@@ -962,7 +919,7 @@ def main(base_path):
                          extra_test(output_pdf_test_collector, base_path, "ISOLA_PDF13"),
                          extra_test(output_pdf_test_collector, base_path, "UK_LayoutPDF14"),
                          extra_test(uk_disable_hanger_hip_test_collector, base_path, "UK-DISH15"),
-                         # extra_test(uk_enable_hanger_hip_test_collector, base_path, "UK-ENAH16"),
+                         extra_test(uk_enable_hanger_hip_test_collector, base_path, "UK-ENAH16"),
                          extra_test(fr_file_size_collector, base_path, "FR-MST18"),
                          extra_test(fr_file_size_collector, base_path, "FR-SST19"),
                          extra_test(fr_file_size_collector, base_path, "FR-DST20"),
