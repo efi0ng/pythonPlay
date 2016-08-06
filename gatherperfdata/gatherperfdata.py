@@ -365,9 +365,6 @@ def test_machine_from_host():
 class TestResult:
     """Collected timing information for a test"""
     def __init__(self, test_label: str):
-        self.sapphireReport = None
-        self.sapphireShutdown = None
-        self.twenty20Shutdown = None
         self.op_results = {}
         self.run_times = []
         # for JSon support
@@ -395,24 +392,16 @@ class TestResult:
         for op in self.op_results.values():
             json_op_results.append(op.to_json_object())
 
-        if self.sapphireReport is not None:
-            op = OpResult(OpLabels.SAPPHIRE_REPORT, sec_to_ms(self.sapphireReport))
-            json_op_results.append(op.to_json_object())
-
-        if self.twenty20Shutdown is not None:
-            op = OpResult(OpLabels.TWENTY20_SHUTDOWN, self.twenty20Shutdown)
-            json_op_results.append(op.to_json_object())
-
-        if self.sapphireShutdown is not None:
-            op = OpResult(OpLabels.SAPPHIRE_SHUTDOWN, sec_to_ms(self.sapphireShutdown))
-            json_op_results.append(op.to_json_object())
-
         if len(self.run_times) != 0:
             for key, runTime in enumerate(self.run_times):
                 op = OpResult(self.run_labels[key], sec_to_ms(runTime))
                 json_op_results.append(op.to_json_object())
 
         return json_dict
+
+    def optional_timed_op_to_file(self, op_label, outfile):
+        if op_label in self.op_results:
+            print("{:.3f}".format(self.op_results[op_label].to_seconds()), file=outfile)
 
     def to_file(self, outfile):
         if _debug:
@@ -422,24 +411,17 @@ class TestResult:
         to_main_form = self.op_results[OpLabels.TO_MAIN_FORM].to_seconds()
         print("{:.3f}\n{:.3f}".format(to_login, to_main_form), file=outfile)
 
-        if OpLabels.SELECT_METALWORK in self.op_results:
-            print("{:.3f}".format(self.op_results[OpLabels.SELECT_METALWORK].to_seconds()), file=outfile)
+        self.optional_timed_op_to_file(OpLabels.SELECT_METALWORK, outfile)
 
         if len(self.run_times) != 0:
             for runTime in self.run_times:
                 print("{:.3f}".format(runTime), file=outfile)
 
-        if self.sapphireReport is not None:
-            print("{:.3f}".format(self.sapphireReport), file=outfile)  # generating Sapphire Report
-
-        if OpLabels.PAMIR_SHUTDOWN in self.op_results:
-            print("{:.3f}".format(self.op_results[OpLabels.PAMIR_SHUTDOWN].to_seconds()), file=outfile)
-
-        if self.sapphireShutdown is not None:
-            print("{:.3f}".format(self.sapphireShutdown), file=outfile)  # Sapphire Report Viewer Shutdown
-
-        if self.twenty20Shutdown is not None:
-            print("{:.3f}".format(self.twenty20Shutdown), file=outfile)
+        for op_label in [OpLabels.SAPPHIRE_REPORT,  # generating Sapphire Report
+                         OpLabels.PAMIR_SHUTDOWN,
+                         OpLabels.SAPPHIRE_SHUTDOWN,  # Sapphire reports viewer shutdown
+                         OpLabels.TWENTY20_SHUTDOWN]:
+            self.optional_timed_op_to_file(op_label, outfile)
 
         if OpLabels.FILE_SIZE in self.op_results:
             print("{:.3f}".format(self.op_results[OpLabels.FILE_SIZE].to_megabytes()), file=outfile)
@@ -836,12 +818,6 @@ def uk_enable_hanger_hip_test_collector(test_dir, test_label):
 
     return test_result
 
-_twenty20_stopwatch_ops = {
-    0: OpLabels.TO_LOGIN,
-    1: OpLabels.TO_MAIN_FORM,
-    2: OpLabels.PAMIR_SHUTDOWN,
-    3: OpLabels.TWENTY20_SHUTDOWN,
-}
 
 _sapphire_stopwatch_ops = {
     0: OpLabels.TO_LOGIN,
@@ -850,6 +826,105 @@ _sapphire_stopwatch_ops = {
     3: OpLabels.SAPPHIRE_SHUTDOWN,
     4: OpLabels.TWENTY20_SHUTDOWN,
 }
+
+
+def uk_open_and_save_test_collector(test_dir, test_label):
+    test_result = TestResult(test_label)
+    test_result.run_labels = ["Open", "Save"]
+
+    collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
+
+    perf_log_file = get_perf_log_path(test_dir)
+
+    # collect the time for opening project
+    lines = get_matching_lines_from_file(perf_log_file, "OpenProject\tComplete")
+    test_result.run_times.append(seconds_from_perf_line(lines[0]))
+
+    # collect the time for saving project
+    lines = get_matching_lines_from_file(perf_log_file, "UI.SaveProjectOperation\tComplete")
+    test_result.run_times.append(seconds_from_perf_line(lines[0]))
+
+    return test_result
+
+
+def full_sync_test_collector(test_dir, test_label):
+    test_result = TestResult(test_label)
+    test_result.run_labels = ["Save", "FullSync"]
+
+    collect_pamir_start_and_duration(test_result, test_dir)
+
+    _twenty20_stopwatch_ops = {
+        0: OpLabels.TO_LOGIN,
+        1: OpLabels.TO_MAIN_FORM,
+        2: OpLabels.PAMIR_SHUTDOWN,
+        3: OpLabels.TWENTY20_SHUTDOWN,
+    }
+
+    collect_tc_stopwatch_data(test_result, test_dir, _twenty20_stopwatch_ops)
+
+    perf_log_file = get_perf_log_path(test_dir)
+
+    # timings for saving project
+    lines = get_matching_lines_from_file(perf_log_file, "Saving\tComplete")
+    test_result.run_times.append(seconds_from_perf_line(lines[0]))
+
+    # timings for MBA Synchronise Operation
+    lines = get_matching_lines_from_file(perf_log_file, "UI.MBASynchroniseOperation\tComplete")
+    test_result.run_times.append(seconds_from_perf_line(lines[0]))
+
+    return test_result
+
+
+# def collectDataFromSapphireReportTest(folderName):
+#     if not os.path.exists("./" + folderName):
+#         return None
+#
+#     tcLogFile = "./" + folderName + "/testrun.log"
+#     timingData = TimingData()
+#
+#     collectSapphireStartupAndReportDataForTest(timingData, (tcLogFile, "TC.Stopwatch"))
+#
+#     return timingData
+#
+#
+# def collectDataFromMultipleDesignCasesTest(folderName):
+#     if not os.path.exists("./" + folderName):
+#         return None
+#
+#     tcLogFile = "./" + folderName + "/testrun.log"
+#     perfLogFile = "./" + folderName + "/data/Pamir-perf.log"
+#     timingData = TimingData()
+#
+#     collectStartupDataForTest(timingData, (tcLogFile, "TC.Stopwatch"))
+#
+#     # collect the total time of designing all frames from "Pamir-perf.log"
+#     data = getDataFromFile((perfLogFile, "BuildDesign"));
+#     if debug: printResults(perfLogFile, data, outputfile)
+#     for dataRow in data:
+#         timingData.runTimes.append(getTotalTimeFromPerfLogRow(dataRow))
+#
+#     return timingData
+#
+#
+# def collectDataFromFrameDesignWithScabTest(folderName):
+#     if not os.path.exists("./" + folderName):
+#         return None
+#
+#     tcLogFile = "./" + folderName + "/testrun.log"
+#     perfLogFile = "./" + folderName + "/data/Pamir-perf.log"
+#     timingData = TimingData()
+#
+#     collectStartupDataForTest(timingData, (tcLogFile, "TC.Stopwatch"))
+#
+#     # collect the total time of designing all frames from "Pamir-perf.log"
+#     data = getDataFromFile((perfLogFile, "BuildDesign"));
+#     if debug: printResults(perfLogFile, data, outputfile)
+#     for dataRow in data:
+#         timingData.runTimes.append(getTotalTimeFromPerfLogRow(dataRow))
+#
+#     return timingData
+
 
 # ---------------------------------------------------------
 # Main program
@@ -914,10 +989,10 @@ def main(base_path):
                          extra_test(fr_file_size_collector, base_path, "FR-MST18"),
                          extra_test(fr_file_size_collector, base_path, "FR-SST19"),
                          extra_test(fr_file_size_collector, base_path, "FR-DST20"),
-                         # timing_array.append(collectDataFromUK_OpenAndSaveTest("UK-OST21"))
+                         extra_test(uk_open_and_save_test_collector, base_path, "UK-OST21"),
                          # timing_array.append(collectDataFromMultipleDesignCasesTest("T22-FR-MDC"))
                          # timing_array.append(collectDataFromFrameDesignWithScabTest("T23-FR-SCAB"))
-                         # timing_array.append(collectDataFromFullSynchronisationTest("UK-SYNC"))
+                         extra_test(full_sync_test_collector, base_path, "UK-SYNC"),
                          # timing_array.append(collectDataFromSapphireReportTest("UK-SAREP"))
                          ]
         output_timings_to_txt_file(timing_array2, _output_file)
