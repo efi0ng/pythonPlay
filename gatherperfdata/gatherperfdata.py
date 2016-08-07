@@ -5,6 +5,7 @@ import os.path
 import json
 import re
 from datetime import datetime
+from typing import Dict
 
 __author__ = 'JSmith' and 'SZhang'
 
@@ -280,26 +281,42 @@ class OpLabels:
 
 class OpResult:
     """Result of an operation"""
-    def __init__(self, label: str, value: int, source_line: str = ""):
+    def __init__(self, label: str, duration: int, source_line: str = ""):
         self.label = label
-        self.value = value
+        self.duration = duration
         self.source_line = source_line
+
+    def _get_value(self):
+        return self.duration
 
     def to_seconds(self):
         """Assuming value is a duration in ms, returns value in seconds."""
-        return self.value/1000.0
+        return self.duration/1000.0
 
     def to_megabytes(self):
-        """Assuming value is kilobytes, return value in megabytes"""
-        return self.value/1024.0
+        """Always zero for duration based op results."""
+        return 0
 
     def to_json_object(self):
         """Convert this OpResult into an object tailored for json serialization."""
         json_dict = {
             JSonLabels.LABEL: self.label,
-            JSonLabels.VALUE: self.value,
+            JSonLabels.VALUE: self._get_value(),
         }
         return json_dict
+
+
+class FileSizeOpResult(OpResult):
+    def __init__(self, label: str, value: int, source_line: str = ""):
+        OpResult.__init__(self, label, 0, source_line)
+        self.file_size = value
+
+    def _get_value(self):
+        return self.file_size
+
+    def to_megabytes(self):
+        """Assuming file_size is kilobytes, return value in megabytes"""
+        return self.file_size / 1024.0
 
 
 class TestMachine:
@@ -365,7 +382,7 @@ def test_machine_from_host():
 class TestResult:
     """Collected timing information for a test"""
     def __init__(self, test_label: str):
-        self.op_results = {}
+        self.op_results = {}  # type: Dict[str, OpResult]
         self.run_times = []
         # for JSon support
         self.label = test_label
@@ -398,6 +415,18 @@ class TestResult:
                 json_op_results.append(op.to_json_object())
 
         return json_dict
+
+    def sum_op_durations(self):
+        """Return total ms for all contained operations (and run times)"""
+        total_ms = 0
+
+        for op_result in self.op_results.values():
+            total_ms += op_result.duration
+
+        for run_time in self.run_times:
+            total_ms += run_time
+
+        return total_ms
 
     def optional_timed_op_to_file(self, op_label, outfile):
         if op_label in self.op_results:
@@ -529,7 +558,7 @@ def collect_file_size_for_test(test_result, filename):
     lines = get_matching_lines_from_file(filename, "Pamir job:")
     if len(lines) > 0:
         file_size = kilobytes_from_file_size_line(lines[0])
-        result = OpResult(OpLabels.FILE_SIZE, file_size, lines[0])
+        result = FileSizeOpResult(OpLabels.FILE_SIZE, file_size, lines[0])
         test_result.add_op_result(result)
 
     return
@@ -898,8 +927,6 @@ def full_sync_test_collector(test_dir, test_label):
 def sapphire_report_test_collector(test_dir, test_label):
     test_result = TestResult(test_label)
 
-    # TODO: Determine test start and duration for this non-Pamir based test.
-
     _sapphire_stopwatch_ops = {
         0: OpLabels.TO_LOGIN,
         1: OpLabels.TO_MAIN_FORM,
@@ -909,6 +936,11 @@ def sapphire_report_test_collector(test_dir, test_label):
     }
 
     collect_tc_stopwatch_data(test_result, test_dir, _sapphire_stopwatch_ops)
+
+    # for Sapphire test we have no Pamir log so calculate start and duration from TC log
+    tc_log_file = get_test_log_path(test_dir)
+    test_result.start_time = get_file_datetime(tc_log_file)
+    test_result.duration = test_result.sum_op_durations()
 
     return test_result
 
