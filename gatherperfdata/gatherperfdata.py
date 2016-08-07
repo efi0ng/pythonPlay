@@ -451,7 +451,7 @@ class TestSuiteRun:
 
         for i in range(1, len(self.test_results)):
             next_result = self.test_results[i]
-            if next_result.start_time < self.start_time:
+            if next_result.start_time is not None and next_result.start_time < self.start_time:
                 self.start_time = next_result.start_time
 
             self.duration += next_result.duration
@@ -819,13 +819,32 @@ def uk_enable_hanger_hip_test_collector(test_dir, test_label):
     return test_result
 
 
-_sapphire_stopwatch_ops = {
-    0: OpLabels.TO_LOGIN,
-    1: OpLabels.TO_MAIN_FORM,
-    2: OpLabels.SAPPHIRE_REPORT,
-    3: OpLabels.SAPPHIRE_SHUTDOWN,
-    4: OpLabels.TWENTY20_SHUTDOWN,
-}
+def design_only_test_collector(test_dir, test_label, run_labels):
+    test_result = TestResult(test_label)
+    test_result.run_labels = run_labels
+
+    collect_pamir_start_and_duration(test_result, test_dir)
+    collect_tc_stopwatch_data(test_result, test_dir)
+
+    perf_log_file = get_perf_log_path(test_dir)
+
+    lines = get_matching_lines_from_file(perf_log_file, "BuildDesign")
+    for line in lines:
+        test_result.run_times.append(get_total_time_from_perf_line(line))
+
+    return test_result
+
+
+def multiple_design_case_test_collector(test_dir, test_label):
+    run_labels = ["DesignUnlockedPlatesAllCases", "DesignUnlockedPlatesSingleCase",
+                  "DesignLockedPlatesAllCases", "DesignLockedPlatesSingleCase"]
+    return design_only_test_collector(test_dir, test_label, run_labels)
+
+
+def frame_design_with_scab_test_collector(test_dir, test_label):
+    run_labels = ["Design"]
+
+    return design_only_test_collector(test_dir, test_label, run_labels)
 
 
 def uk_open_and_save_test_collector(test_dir, test_label):
@@ -876,54 +895,22 @@ def full_sync_test_collector(test_dir, test_label):
     return test_result
 
 
-# def collectDataFromSapphireReportTest(folderName):
-#     if not os.path.exists("./" + folderName):
-#         return None
-#
-#     tcLogFile = "./" + folderName + "/testrun.log"
-#     timingData = TimingData()
-#
-#     collectSapphireStartupAndReportDataForTest(timingData, (tcLogFile, "TC.Stopwatch"))
-#
-#     return timingData
-#
-#
-# def collectDataFromMultipleDesignCasesTest(folderName):
-#     if not os.path.exists("./" + folderName):
-#         return None
-#
-#     tcLogFile = "./" + folderName + "/testrun.log"
-#     perfLogFile = "./" + folderName + "/data/Pamir-perf.log"
-#     timingData = TimingData()
-#
-#     collectStartupDataForTest(timingData, (tcLogFile, "TC.Stopwatch"))
-#
-#     # collect the total time of designing all frames from "Pamir-perf.log"
-#     data = getDataFromFile((perfLogFile, "BuildDesign"));
-#     if debug: printResults(perfLogFile, data, outputfile)
-#     for dataRow in data:
-#         timingData.runTimes.append(getTotalTimeFromPerfLogRow(dataRow))
-#
-#     return timingData
-#
-#
-# def collectDataFromFrameDesignWithScabTest(folderName):
-#     if not os.path.exists("./" + folderName):
-#         return None
-#
-#     tcLogFile = "./" + folderName + "/testrun.log"
-#     perfLogFile = "./" + folderName + "/data/Pamir-perf.log"
-#     timingData = TimingData()
-#
-#     collectStartupDataForTest(timingData, (tcLogFile, "TC.Stopwatch"))
-#
-#     # collect the total time of designing all frames from "Pamir-perf.log"
-#     data = getDataFromFile((perfLogFile, "BuildDesign"));
-#     if debug: printResults(perfLogFile, data, outputfile)
-#     for dataRow in data:
-#         timingData.runTimes.append(getTotalTimeFromPerfLogRow(dataRow))
-#
-#     return timingData
+def sapphire_report_test_collector(test_dir, test_label):
+    test_result = TestResult(test_label)
+
+    # TODO: Determine test start and duration for this non-Pamir based test.
+
+    _sapphire_stopwatch_ops = {
+        0: OpLabels.TO_LOGIN,
+        1: OpLabels.TO_MAIN_FORM,
+        2: OpLabels.SAPPHIRE_REPORT,
+        3: OpLabels.SAPPHIRE_SHUTDOWN,
+        4: OpLabels.TWENTY20_SHUTDOWN,
+    }
+
+    collect_tc_stopwatch_data(test_result, test_dir, _sapphire_stopwatch_ops)
+
+    return test_result
 
 
 # ---------------------------------------------------------
@@ -949,7 +936,7 @@ def basic_test(base_path: str, test_spec: TestSpec):
     return basic_test_collector(test_dir, test_spec)
 
 
-def extra_test(collector, base_path, test_label):
+def extra_test(base_path, collector, test_label):
     """Collect data from extra test run"""
     test_dir = test_dir_from_label(base_path, test_label)
 
@@ -971,30 +958,37 @@ def main(base_path):
                         basic_test(base_path, BBT3_TEST)]
         output_timings_to_txt_file(timing_array, _output_file)
 
+    extra_tests = [
+        (nav_trim_test_collector, "NTT4"),
+        (mono_to_duo_test_collector, "MDT5"),
+        (frame_design_test_collector, "HD4_FDT6"),
+        (frame_design_test_collector, "CHP_FDT10"),
+        (hip_to_hip_plus_test_collector, "FR-HHT7"),
+        (hip_to_hip_plus_test_collector, "UK-HHT8"),
+        (benchmark_test_collector, "FR_LWS9"),
+        (uk_thousand_objects_test_collector, "UK_TDOT17"),
+        (benchmark_test_collector, "SW_FBMT11"),
+        (benchmark_test_collector, "UK_HT1_FBMT12"),
+        (output_pdf_test_collector, "ISOLA_PDF13"),
+        (output_pdf_test_collector, "UK_LayoutPDF14"),
+        (uk_disable_hanger_hip_test_collector, "UK-DISH15"),
+        (uk_enable_hanger_hip_test_collector, "UK-ENAH16"),
+        (fr_file_size_collector, "FR-MST18"),
+        (fr_file_size_collector, "FR-SST19"),
+        (fr_file_size_collector, "FR-DST20"),
+        (uk_open_and_save_test_collector, "UK-OST21"),
+        (multiple_design_case_test_collector, "T22-FR-MDC"),
+        (frame_design_with_scab_test_collector, "T23-FR-SCAB"),
+        (full_sync_test_collector, "UK-SYNC"),
+        (sapphire_report_test_collector, "UK-SAREP"),
+    ]
     with open(os.path.join(base_path, "extra-results.txt"), mode="w") as _output_file:
-        timing_array2 = [extra_test(nav_trim_test_collector, base_path, "NTT4"),
-                         extra_test(mono_to_duo_test_collector, base_path, "MDT5"),
-                         extra_test(frame_design_test_collector, base_path, "HD4_FDT6"),
-                         extra_test(frame_design_test_collector, base_path, "CHP_FDT10"),
-                         extra_test(hip_to_hip_plus_test_collector, base_path, "FR-HHT7"),
-                         extra_test(hip_to_hip_plus_test_collector, base_path, "UK-HHT8"),
-                         extra_test(benchmark_test_collector, base_path, "FR_LWS9"),
-                         extra_test(uk_thousand_objects_test_collector, base_path, "UK_TDOT17"),
-                         extra_test(benchmark_test_collector, base_path, "SW_FBMT11"),
-                         extra_test(benchmark_test_collector, base_path, "UK_HT1_FBMT12"),
-                         extra_test(output_pdf_test_collector, base_path, "ISOLA_PDF13"),
-                         extra_test(output_pdf_test_collector, base_path, "UK_LayoutPDF14"),
-                         extra_test(uk_disable_hanger_hip_test_collector, base_path, "UK-DISH15"),
-                         extra_test(uk_enable_hanger_hip_test_collector, base_path, "UK-ENAH16"),
-                         extra_test(fr_file_size_collector, base_path, "FR-MST18"),
-                         extra_test(fr_file_size_collector, base_path, "FR-SST19"),
-                         extra_test(fr_file_size_collector, base_path, "FR-DST20"),
-                         extra_test(uk_open_and_save_test_collector, base_path, "UK-OST21"),
-                         # timing_array.append(collectDataFromMultipleDesignCasesTest("T22-FR-MDC"))
-                         # timing_array.append(collectDataFromFrameDesignWithScabTest("T23-FR-SCAB"))
-                         extra_test(full_sync_test_collector, base_path, "UK-SYNC"),
-                         # timing_array.append(collectDataFromSapphireReportTest("UK-SAREP"))
-                         ]
+        timing_array2 = []
+        for collector, label in extra_tests:
+            result = extra_test(base_path, collector, label)
+            if result is not None:
+                timing_array2.append(result)
+
         output_timings_to_txt_file(timing_array2, _output_file)
 
     timing_array.extend(timing_array2)
