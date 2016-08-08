@@ -44,7 +44,8 @@ TestResult
 
 TestOperationResult
     label: operation label
-    value: typically duration in ms but could be kilobytes for file size
+    duration: duration in ms or zero if no time registered
+    fileSize: size in kilobytes or zero if no size recorded
 
 Added:
 
@@ -260,6 +261,7 @@ class JSonLabels:
     PROCESSOR = "processor"
     CPU_COUNT = "logicalCores"
     MEMORY = "memory"
+    FILE_SIZE = "fileSize"
     OPERATING_SYSTEM = "operatingSystem"
     VERSION_SHORT = "versionShort"
     VERSION_LONG = "versionLong"
@@ -284,39 +286,31 @@ class OpResult:
     def __init__(self, label: str, duration: int, source_line: str = ""):
         self.label = label
         self.duration = duration
+        self.file_size = 0
         self.source_line = source_line
-
-    def _get_value(self):
-        return self.duration
 
     def to_seconds(self):
         """Assuming value is a duration in ms, returns value in seconds."""
         return self.duration/1000.0
 
     def to_megabytes(self):
-        """Always zero for duration based op results."""
-        return 0
+        """Assuming file_size is kilobytes, return value in megabytes"""
+        return self.file_size / 1024.0
 
     def to_json_object(self):
         """Convert this OpResult into an object tailored for json serialization."""
         json_dict = {
             JSonLabels.LABEL: self.label,
-            JSonLabels.VALUE: self._get_value(),
+            JSonLabels.DURATION: self.duration,
+            JSonLabels.FILE_SIZE: self.file_size
         }
         return json_dict
 
 
 class FileSizeOpResult(OpResult):
-    def __init__(self, label: str, value: int, source_line: str = ""):
+    def __init__(self, label: str, file_size: int, source_line: str = ""):
         OpResult.__init__(self, label, 0, source_line)
-        self.file_size = value
-
-    def _get_value(self):
-        return self.file_size
-
-    def to_megabytes(self):
-        """Assuming file_size is kilobytes, return value in megabytes"""
-        return self.file_size / 1024.0
+        self.file_size = file_size
 
 
 class TestMachine:
@@ -639,16 +633,7 @@ def add_build_and_design_run_times(test_result, perf_log_file):
     test_result.run_times.append(get_total_time_from_perf_line(lines[0]))
 
 
-def basic_design_test1_collector(test_dir, test_label):
-    run_labels = ["Design1", "Check1",
-                  "Design2", "Check2",
-                  "Design3", "Check3",
-                  "Design4", "Check4",
-                  "Design5", "Check5"]
-    return design_only_test_collector(test_dir, test_label, run_labels)
-
-
-def basic_design_test2_collector(test_dir, test_label):
+def basic_design_test_collector(test_dir, test_label):
     run_labels = ["Design1", "Check1",
                   "Design2", "Check2",
                   "Design3", "Check3",
@@ -968,8 +953,8 @@ def main(base_path):
     test_suite_run = TestSuiteRun(_TEST_SUITE_LABEL, machine)
 
     basic_tests = [
-        (basic_design_test1_collector, "DPT1"),
-        (basic_design_test2_collector, "DPT2"),
+        (basic_design_test_collector, "DPT1"),
+        (basic_design_test_collector, "DPT2"),
         (basic_build_test_collector, "BBT3"),
     ]
     timing_array = scrape_test_runs(base_path, "baseline-results.txt", basic_tests)
