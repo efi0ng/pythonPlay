@@ -400,7 +400,7 @@ class TestResult:
             JSonLabels.STATUS: self.status,
         }
 
-        for op in self.op_results.values():
+        for _, op in sorted(self.op_results.items(), key=lambda i: i[0]):
             json_op_results.append(op.to_json_object())
 
         if len(self.run_times) != 0:
