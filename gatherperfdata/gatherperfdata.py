@@ -584,65 +584,33 @@ def collect_test_suite_run_data(test_suite_run: TestSuiteRun, base_path: str):
 
     pass
 
-
 # ---------------------------------------------------------
-# Basic test specifications and collection
+#  Test collection routines and close support methods
 # ---------------------------------------------------------
 
 
-class TestSpec:
-    def __init__(self, perf_search_str, test_label, run_labels):
-        self.perf_search_str = perf_search_str
-        self.test_label = test_label
-        self.run_labels = run_labels
-
-DPT1_TEST = TestSpec(
-    test_label="DPT1",
-    run_labels=["Design1", "Check1",
-                "Design2", "Check2",
-                "Design3", "Check3",
-                "Design4", "Check4",
-                "Design5", "Check5"],
-    perf_search_str="UI.BuildDesign")
-
-DPT2_TEST = TestSpec(
-    test_label="DPT2",
-    run_labels=["Design1", "Check1",
-                "Design2", "Check2",
-                "Design3", "Check3",
-                "Design4", "Check4",
-                "Design5", "Check5"],
-    perf_search_str="UI.BuildDesign")
-
-BBT3_TEST = TestSpec(
-    test_label="BBT3",
-    run_labels=["Build1", "Build2", "Build3", "Build4", "Build5",
-                "Build6", "Build7", "Build8", "Build9", "Build10"],
-    perf_search_str="UI.Build")
-
-
-def basic_test_collector(test_dir: str, test_spec: TestSpec):
-    """Collect data from the TestComplete and Pamir Performance Test logs for
-    one test."""
-
-    test_result = TestResult(test_spec.test_label)
-    test_result.run_labels = test_spec.run_labels
+def single_perf_op_test_collector(test_dir, test_label, search_string, run_labels):
+    test_result = TestResult(test_label)
+    test_result.run_labels = run_labels
 
     collect_pamir_start_and_duration(test_result, test_dir)
     collect_tc_stopwatch_data(test_result, test_dir)
 
-    perf_filename = get_perf_log_path(test_dir)
-    data = get_matching_lines_from_file(perf_filename, test_spec.perf_search_str)
+    perf_log_file = get_perf_log_path(test_dir)
 
-    for dataRow in data:
-        test_result.run_times.append(get_total_time_from_perf_line(dataRow))
+    lines = get_matching_lines_from_file(perf_log_file, search_string)
+    for line in lines:
+        test_result.run_times.append(get_total_time_from_perf_line(line))
 
     return test_result
 
 
-# ---------------------------------------------------------
-# Other test collection routines
-# ---------------------------------------------------------
+def design_only_test_collector(test_dir, test_label, run_labels):
+    return single_perf_op_test_collector(test_dir, test_label, "BuildDesign", run_labels)
+
+
+def build_only_test_collector(test_dir, test_label, run_labels):
+    return single_perf_op_test_collector(test_dir, test_label, "BuildFrame", run_labels)
 
 
 def add_benchmark_run_times(test_result, tc_log_file, lines_to_parse=None):
@@ -669,6 +637,30 @@ def add_build_and_design_run_times(test_result, perf_log_file):
     # total time of designing all frames
     lines = get_matching_lines_from_file(perf_log_file, "BuildDesign")
     test_result.run_times.append(get_total_time_from_perf_line(lines[0]))
+
+
+def basic_design_test1_collector(test_dir, test_label):
+    run_labels = ["Design1", "Check1",
+                  "Design2", "Check2",
+                  "Design3", "Check3",
+                  "Design4", "Check4",
+                  "Design5", "Check5"]
+    return design_only_test_collector(test_dir, test_label, run_labels)
+
+
+def basic_design_test2_collector(test_dir, test_label):
+    run_labels = ["Design1", "Check1",
+                  "Design2", "Check2",
+                  "Design3", "Check3",
+                  "Design4", "Check4",
+                  "Design5", "Check5"]
+    return design_only_test_collector(test_dir, test_label, run_labels)
+
+
+def basic_build_test_collector(test_dir, test_label):
+    run_labels = ["Build1", "Build2", "Build3", "Build4", "Build5",
+                  "Build6", "Build7", "Build8", "Build9", "Build10"]
+    return build_only_test_collector(test_dir, test_label, run_labels)
 
 
 def nav_trim_test_collector(test_dir, test_label):
@@ -848,22 +840,6 @@ def uk_enable_hanger_hip_test_collector(test_dir, test_label):
     return test_result
 
 
-def design_only_test_collector(test_dir, test_label, run_labels):
-    test_result = TestResult(test_label)
-    test_result.run_labels = run_labels
-
-    collect_pamir_start_and_duration(test_result, test_dir)
-    collect_tc_stopwatch_data(test_result, test_dir)
-
-    perf_log_file = get_perf_log_path(test_dir)
-
-    lines = get_matching_lines_from_file(perf_log_file, "BuildDesign")
-    for line in lines:
-        test_result.run_times.append(get_total_time_from_perf_line(line))
-
-    return test_result
-
-
 def multiple_design_case_test_collector(test_dir, test_label):
     run_labels = ["DesignUnlockedPlatesAllCases", "DesignUnlockedPlatesSingleCase",
                   "DesignLockedPlatesAllCases", "DesignLockedPlatesSingleCase"]
@@ -962,13 +938,7 @@ def output_timings_to_txt_file(test_results, outfile):
         td.to_file(outfile)
 
 
-def basic_test(base_path: str, test_spec: TestSpec):
-    """Collect data from basic test run"""
-    test_dir = test_dir_from_label(base_path, test_spec.test_label)
-    return basic_test_collector(test_dir, test_spec)
-
-
-def extra_test(base_path, collector, test_label):
+def scrape_test_run(base_path, collector, test_label):
     """Collect data from extra test run"""
     test_dir = test_dir_from_label(base_path, test_label)
 
@@ -978,17 +948,31 @@ def extra_test(base_path, collector, test_label):
     return collector(test_dir, test_label)
 
 
+def scrape_test_runs(base_path, out_filename, tests_to_scrape):
+    global _output_file
+    test_runs = []
+    with open(os.path.join(base_path, out_filename), mode="w") as _output_file:
+        for collector, label in tests_to_scrape:
+            result = scrape_test_run(base_path, collector, label)
+            if result is not None:
+                test_runs.append(result)
+        output_timings_to_txt_file(test_runs, _output_file)
+
+    return test_runs
+
+
 def main(base_path):
     global _output_file
     machine = test_machine_from_host()
 
     test_suite_run = TestSuiteRun(_TEST_SUITE_LABEL, machine)
 
-    with open(os.path.join(base_path, "baseline-results.txt"), mode="w") as _output_file:
-        timing_array = [basic_test(base_path, DPT1_TEST),
-                        basic_test(base_path, DPT2_TEST),
-                        basic_test(base_path, BBT3_TEST)]
-        output_timings_to_txt_file(timing_array, _output_file)
+    basic_tests = [
+        (basic_design_test1_collector, "DPT1"),
+        (basic_design_test2_collector, "DPT2"),
+        (basic_build_test_collector, "BBT3"),
+    ]
+    timing_array = scrape_test_runs(base_path, "baseline-results.txt", basic_tests)
 
     extra_tests = [
         (nav_trim_test_collector, "NTT4"),
@@ -1014,19 +998,11 @@ def main(base_path):
         (full_sync_test_collector, "UK-SYNC"),
         (sapphire_report_test_collector, "UK-SAREP"),
     ]
-    with open(os.path.join(base_path, "extra-results.txt"), mode="w") as _output_file:
-        timing_array2 = []
-        for collector, label in extra_tests:
-            result = extra_test(base_path, collector, label)
-            if result is not None:
-                timing_array2.append(result)
-
-        output_timings_to_txt_file(timing_array2, _output_file)
+    timing_array2 = scrape_test_runs(base_path, "extra-results.txt", extra_tests)
 
     timing_array.extend(timing_array2)
     for td in timing_array:
-        if td is not None:
-            test_suite_run.append_result(td)
+        test_suite_run.append_result(td)
 
     collect_test_suite_run_data(test_suite_run, base_path)
     test_suite_run.to_json_file(os.path.join(base_path, "results.json"))
