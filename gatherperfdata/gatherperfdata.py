@@ -279,6 +279,9 @@ class OpLabels:
     TWENTY20_SHUTDOWN = "2020Shutdown"
     SAPPHIRE_SHUTDOWN = "SapphireShutdown"
     FILE_SIZE = "FileSize"
+    AVERAGE_DESIGN = "AverageDesign"
+    AVERAGE_CHECK = "AverageCheck"
+    AVERAGE_BUILD = "AverageBuild"
 
 
 class OpResult:
@@ -497,11 +500,11 @@ class TestSuiteRun:
         with open(filename, mode="w") as jsonFile:
             json.dump(self.to_json_object(), jsonFile, indent=3, sort_keys=True)
 
-
 # ---------------------------------------------------------
 # Data collection - general
 # These methods can have knowledge of the test folder structures
 # ---------------------------------------------------------
+
 
 def get_test_log_path(test_dir):
     return os.path.join(test_dir, "testrun.log")
@@ -633,19 +636,53 @@ def add_build_and_design_run_times(test_result, perf_log_file):
     test_result.run_times.append(get_total_time_from_perf_line(lines[0]))
 
 
+def calculate_average_run_time_minus_first(test_run: TestResult, label_to_match):
+    '''Calculate the average run time of a set of operations with label matching <label_to_match>.
+    Excludes first run which is assumed to have label <label_to_match>1'''
+
+    run_time_to_ignore = label_to_match + "1"
+
+    total_time = 0
+    total_count = 0
+    for i, time in enumerate(test_run.run_times):
+        cur_label = test_run.run_labels[i]
+        if cur_label == run_time_to_ignore:
+            continue
+
+        if label_to_match in cur_label:
+            total_time += test_run.run_times[i]
+            total_count += 1
+
+    return round(total_time/total_count, 3) if total_count > 0 else 0
+
+
+def add_average_result(test_run: TestResult, label_to_match, op_label):
+    average_design = calculate_average_run_time_minus_first(test_run, label_to_match)
+    test_run.add_op_result(OpResult(op_label, average_design))
+
+
 def basic_design_test_collector(test_dir, test_label):
     run_labels = ["Design1", "Check1",
                   "Design2", "Check2",
                   "Design3", "Check3",
                   "Design4", "Check4",
                   "Design5", "Check5"]
-    return design_only_test_collector(test_dir, test_label, run_labels)
+    test_run = design_only_test_collector(test_dir, test_label, run_labels)
+
+    add_average_result(test_run, "Design", OpLabels.AVERAGE_DESIGN)
+    add_average_result(test_run, "Check", OpLabels.AVERAGE_CHECK)
+
+    return test_run
 
 
 def basic_build_test_collector(test_dir, test_label):
     run_labels = ["Build1", "Build2", "Build3", "Build4", "Build5",
                   "Build6", "Build7", "Build8", "Build9", "Build10"]
-    return build_only_test_collector(test_dir, test_label, run_labels)
+    test_run = build_only_test_collector(test_dir, test_label, run_labels)
+
+    add_average_result(test_run, "Build", OpLabels.AVERAGE_BUILD)
+
+    return test_run
 
 
 def nav_trim_test_collector(test_dir, test_label):
@@ -957,7 +994,7 @@ def main(base_path):
         (basic_design_test_collector, "DPT2"),
         (basic_build_test_collector, "BBT3"),
     ]
-    timing_array = scrape_test_runs(base_path, "baseline-results.txt", basic_tests)
+    timing_array = scrape_test_runs(base_path, "baseline-results2.txt", basic_tests)
 
     extra_tests = [
         (nav_trim_test_collector, "NTT4"),
@@ -983,7 +1020,7 @@ def main(base_path):
         (full_sync_test_collector, "UK-SYNC"),
         (sapphire_report_test_collector, "UK-SAREP"),
     ]
-    timing_array2 = scrape_test_runs(base_path, "extra-results.txt", extra_tests)
+    timing_array2 = scrape_test_runs(base_path, "extra-results2.txt", extra_tests)
 
     timing_array.extend(timing_array2)
     for td in timing_array:
