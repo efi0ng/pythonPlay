@@ -41,6 +41,17 @@ def get_latest_mod_date_in_dir(path):
         return dir_stat.st_mtime_ns
 
 
+def get_latest_mod_date_in_sub_dirs(path):
+    """Use date of files one level beyond the given path to work out an age of the folder.
+    If there are no sub-folders, fallback to using path."""
+    dir_entries = list(filter(lambda f: f.is_dir(), os.scandir(path)))
+
+    if len(dir_entries) == 0:
+        return get_latest_mod_date_in_dir(path)
+
+    return max(map(lambda f: get_latest_mod_date_in_dir(f.path), dir_entries))
+
+
 def remove_pamir_backup_files(dir_name):
     test_dirs = [d for d in os.listdir(dir_name) if os.path.isdir(os.path.join(dir_name, d))]
 
@@ -57,7 +68,7 @@ def try_gather_perf_data(test_folder):
         return
 
     try:
-        print("Gathering perf data for: {}".format(backup_folder))
+        print("Gathering perf data for: {}".format(test_folder))
         gatherperfdata.main(test_folder)
     except FileNotFoundError as err:
         print(err)
@@ -96,7 +107,7 @@ def main(base_path, zip_folder, min_days_old):
         if gather_script_exists:
             try_gather_perf_data(cur_test_run_folder)
 
-        modtime = get_latest_mod_date_in_dir(cur_test_run_folder)
+        modtime = get_latest_mod_date_in_sub_dirs(cur_test_run_folder)
         if modtime > cut_off_date_ns:
             print("Skipping {}: only {} days old (less than {})."
                   .format(dir_name, calc_age_from_modtime(modtime), min_days_old))
