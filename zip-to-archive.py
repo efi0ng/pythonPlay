@@ -6,6 +6,7 @@ from subprocess import run
 from shutil import rmtree
 from time import time
 from datetime import timedelta, datetime
+import gatherperfdata
 
 """Zip up each directory in the current folder as separate archives to a specified location (default hardcoded).
   The original directories will be deleted."""
@@ -40,53 +41,88 @@ def get_latest_mod_date_in_dir(path):
         return dir_stat.st_mtime_ns
 
 
-def main(zip_folder, min_days_old):
+def remove_pamir_backup_files(dir_name):
+    test_dirs = [d for d in os.listdir(dir_name) if os.path.isdir(os.path.join(dir_name, d))]
+
+    for test_dir in test_dirs:
+        backup_folder = os.path.join(dir_name, test_dir, "data", "backup")
+        if os.path.exists(backup_folder):
+            print("Deleting backup folder: {}".format(backup_folder))
+            rmtree(backup_folder, ignore_errors=True)
+
+
+def try_gather_perf_data(test_folder):
+    """Try to run the gatherperfdata script if it hasn't been run yet"""
+    if os.path.exists(os.path.join(test_folder, "results.json")):
+        return
+
+    try:
+        print("Gathering perf data for: {}".format(backup_folder))
+        gatherperfdata.main(test_folder)
+    except FileNotFoundError as err:
+        print(err)
+    except IndexError as err:
+        print(err)
+    except KeyError as err:
+        print(err)
+
+
+def main(base_path, zip_folder, min_days_old):
     if not (os.path.exists(zip_folder)):
         print("Error: Output folder '{0}' does not exist.".format(zip_folder))
         return
 
     cut_off_date_ns = int(calc_birth_date_from_age(min_days_old)*1e9)
-    dirs = [d for d in os.listdir(".") if os.path.isdir(d)]
+    dirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
 
-    for d in dirs:
-        print(d)
-        archive_name = os.path.join(zip_folder, "%s.7z" % d)
+    for dir_name in dirs:
+        archive_name = os.path.join(zip_folder, "%s.7z" % dir_name)
 
         if os.path.exists(archive_name):
-            print("Error: Archive %s already exists. Skipping." % d)
+            print("Error: Archive %s already exists. Skipping." % dir_name)
             continue
 
-        modtime = get_latest_mod_date_in_dir(d)
+        cur_test_run_folder = os.path.join(base_path, dir_name)
+
+        # regardless of age, we want to clean out backups from test folders
+        remove_pamir_backup_files(cur_test_run_folder)
+
+        # run data gatherer to be sure we've run it
+        try_gather_perf_data(cur_test_run_folder)
+
+        modtime = get_latest_mod_date_in_dir(cur_test_run_folder)
         if modtime > cut_off_date_ns:
             print("Skipping {}: only {} days old (less than {})."
-                  .format(d, calc_age_from_modtime(modtime), min_days_old))
+                  .format(dir_name, calc_age_from_modtime(modtime), min_days_old))
             continue
 
-        zip_command = r'c:\Program Files\7-Zip\7z.exe a "{0}" ".\{1}\*" -sdel -bso0'.format(archive_name, d)
+        print("Zipping: {}".format(dir_name))
+        zip_command = r'c:\Program Files\7-Zip\7z.exe a "{0}" "{1}\*" -sdel -bso0'.format(archive_name, cur_test_run_folder)
         result = run(zip_command)
 
         if result.returncode == 0 and os.path.exists(archive_name):
             os.utime(archive_name, ns=(modtime, modtime))
-            rmtree(d, ignore_errors=True)
+            rmtree(cur_test_run_folder, ignore_errors=True)
 
 
 if __name__ == "__main__":
     _zip_folder = _ZIP_OUTPUT_DIR
     _min_days_old = _DEFAULT_MIN_DAYS_OLD
+    _base_path = "."
 
     if len(sys.argv) > 1:
         if sys.argv[1] == "-h":
             print("zip-to-archive [source_folder] [dest_folder] [minimum_age]")
             exit()
 
-        _requested_path = sys.argv[1]
-        if os.path.exists(_requested_path):
-            os.chdir(_requested_path)
+        _base_path = sys.argv[1]
+        if os.path.exists(_base_path):
+            os.chdir(_base_path)
 
     else:
-        _default_path = os.path.dirname(__file__)
-        if _default_path != "":
-            os.chdir(_default_path)
+        _base_path = os.path.dirname(__file__)
+        if _base_path != "":
+            os.chdir(_base_path)
 
     # avoid dangerous current working directory
     _cwd = os.getcwd()
@@ -101,5 +137,5 @@ if __name__ == "__main__":
         _min_days_old = int(sys.argv[3])
 
     print("working folder: {}\nzip folder: {}\nmin days old: {}".format(_cwd, _zip_folder, _min_days_old))
-    main(_zip_folder, _min_days_old)
+    main(_base_path, _zip_folder, _min_days_old)
     print("All done!")
