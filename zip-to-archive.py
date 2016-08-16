@@ -72,6 +72,11 @@ def main(base_path, zip_folder, min_days_old):
         print("Error: Output folder '{0}' does not exist.".format(zip_folder))
         return
 
+    cwd = os.getcwd()
+    gather_script_exists = os.path.exists(os.path.join(cwd, "gatherperfdata.py"))
+    if gather_script_exists:
+        print("Gather perf script found. Will run it on any folders that don't have result.json.")
+
     cut_off_date_ns = int(calc_birth_date_from_age(min_days_old)*1e9)
     dirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
 
@@ -88,7 +93,8 @@ def main(base_path, zip_folder, min_days_old):
         remove_pamir_backup_files(cur_test_run_folder)
 
         # run data gatherer to be sure we've run it
-        try_gather_perf_data(cur_test_run_folder)
+        if gather_script_exists:
+            try_gather_perf_data(cur_test_run_folder)
 
         modtime = get_latest_mod_date_in_dir(cur_test_run_folder)
         if modtime > cut_off_date_ns:
@@ -123,6 +129,8 @@ if __name__ == "__main__":
         _base_path = os.path.dirname(__file__)
         if _base_path != "":
             os.chdir(_base_path)
+        else:
+            _base_path = "."
 
     # avoid dangerous current working directory
     _cwd = os.getcwd()
