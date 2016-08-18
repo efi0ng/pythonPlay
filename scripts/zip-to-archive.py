@@ -5,7 +5,6 @@ import sys
 import os
 from subprocess import run
 from shutil import rmtree, copy2
-from time import time
 from datetime import timedelta, datetime
 import gatherperfdata
 
