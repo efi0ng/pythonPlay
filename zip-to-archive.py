@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+# Script version 2016.08.18.14.15
 
 import sys
 import os
 from subprocess import run
-from shutil import rmtree
+from shutil import rmtree, copy2
 from time import time
 from datetime import timedelta, datetime
 import gatherperfdata
@@ -13,6 +14,7 @@ import gatherperfdata
 
 _ZIP_OUTPUT_DIR = r"c:\Test\ZippedOutput"
 _DEFAULT_MIN_DAYS_OLD = 100    # days
+_DEFAULT_MAX_FILES_TO_ZIP = 30
 
 
 def calc_birth_date_from_age(days_old: int):
@@ -78,7 +80,23 @@ def try_gather_perf_data(test_folder):
         print(err)
 
 
-def main(base_path, zip_folder, min_days_old):
+def copy_result_json_to_archive_folder(zip_folder, test_run_folder, test_dir_name):
+    """If a JSon file exists, copy it loose to the zip folder for ease of access."""
+    json_file = os.path.join(test_run_folder, "results.json")
+    try:
+        if os.path.exists(json_file):
+            # don't rename first since we want test folder contents untouched when archiving
+            copy2(json_file, zip_folder)
+            intermediate_file = os.path.join(zip_folder, "results.json")
+            target_file = os.path.join(zip_folder, test_dir_name + ".results.json")
+            os.rename(intermediate_file, target_file)
+        else:
+            print("Could not find json file: {}".format(json_file))
+    except Exception as err:
+        print(err)
+
+
+def main(base_path, zip_folder, min_days_old, max_folders_to_zip=0):
     if not (os.path.exists(zip_folder)):
         print("Error: Output folder '{0}' does not exist.".format(zip_folder))
         return
@@ -91,14 +109,16 @@ def main(base_path, zip_folder, min_days_old):
     cut_off_date_ns = int(calc_birth_date_from_age(min_days_old)*1e9)
     dirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
 
-    for dir_name in dirs:
-        archive_name = os.path.join(zip_folder, "%s.7z" % dir_name)
+    total_files_zipped = 0
+    
+    for test_dir_name in dirs:
+        archive_name = os.path.join(zip_folder, "%s.7z" % test_dir_name)
 
         if os.path.exists(archive_name):
-            print("Error: Archive %s already exists. Skipping." % dir_name)
+            print("Error: Archive %s already exists. Skipping." % test_dir_name)
             continue
 
-        cur_test_run_folder = os.path.join(base_path, dir_name)
+        cur_test_run_folder = os.path.join(base_path, test_dir_name)
 
         # regardless of age, we want to clean out backups from test folders
         remove_pamir_backup_files(cur_test_run_folder)
@@ -110,17 +130,24 @@ def main(base_path, zip_folder, min_days_old):
         modtime = get_latest_mod_date_in_sub_dirs(cur_test_run_folder)
         if modtime > cut_off_date_ns:
             print("Skipping {}: only {} days old (less than {})."
-                  .format(dir_name, calc_age_from_modtime(modtime), min_days_old))
+                  .format(test_dir_name, calc_age_from_modtime(modtime), min_days_old))
             continue
 
-        print("Zipping: {}".format(dir_name))
-        zip_command = r'c:\Program Files\7-Zip\7z.exe a "{0}" "{1}\*" -sdel -bso0'.format(archive_name, cur_test_run_folder)
+        # grab json result for easy access
+        copy_result_json_to_archive_folder(zip_folder, cur_test_run_folder, test_dir_name)
+
+        total_files_zipped += 1
+        print("Zipping {}: {}".format(total_files_zipped, test_dir_name))
+        zip_command = r'c:\Program Files\7-Zip\7z.exe a "{0}" "{1}\*" -sdel -bso0'\
+            .format(archive_name, cur_test_run_folder)
         result = run(zip_command)
 
         if result.returncode == 0 and os.path.exists(archive_name):
-            os.utime(archive_name, ns=(modtime, modtime))
+            os.utime(archive_name, None, ns=(modtime, modtime))
             rmtree(cur_test_run_folder, ignore_errors=True)
 
+        if 0 < max_folders_to_zip <= total_files_zipped:
+            break
 
 if __name__ == "__main__":
     _zip_folder = _ZIP_OUTPUT_DIR
@@ -145,6 +172,7 @@ if __name__ == "__main__":
 
     # avoid dangerous current working directory
     _cwd = os.getcwd()
+    _max_files_to_zip = _DEFAULT_MAX_FILES_TO_ZIP
     if "windows" in _cwd:
         print("CWD contains the word Windows. Stopping now to avoid potentially serious side effects.")
         exit()
@@ -155,6 +183,10 @@ if __name__ == "__main__":
     if len(sys.argv) > 3:
         _min_days_old = int(sys.argv[3])
 
-    print("working folder: {}\nzip folder: {}\nmin days old: {}".format(_cwd, _zip_folder, _min_days_old))
-    main(_base_path, _zip_folder, _min_days_old)
+    if len(sys.argv) > 4:
+        _max_files_to_zip = int(sys.argv[4])
+
+    print("working folder: {}\nzip folder: {}\nmin days old: {}  | max files to zip: {}"
+          .format(_cwd, _zip_folder, _min_days_old, _max_files_to_zip))
+    main(_base_path, _zip_folder, _min_days_old, _max_files_to_zip)
     print("All done!")
