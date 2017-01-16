@@ -109,7 +109,7 @@ def main(base_path, zip_folder, min_days_old, max_folders_to_zip=0):
     dirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
 
     total_files_zipped = 0
-    
+
     for test_dir_name in dirs:
         archive_name = os.path.join(zip_folder, "%s.7z" % test_dir_name)
 
@@ -155,7 +155,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) > 1:
         if sys.argv[1] == "-h":
-            print("zip-to-archive [source_folder] [dest_folder] [minimum_age]")
+            print("zip-to-archive [source_folder] [dest_folder] [minimum_age] [max_files_to_zip]")
             exit()
 
         _base_path = sys.argv[1]
