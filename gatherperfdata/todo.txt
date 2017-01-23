@@ -1,0 +1,3 @@
+DONE: Change format so that OpResult has a type and value rather than both filesize and duration.
+TODO: Write a converter from old format to new
+TODO: Fix bug in build revision parser? Doesn't seem to work for many builds.
