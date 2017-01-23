@@ -6,6 +6,7 @@ import json
 import re
 from datetime import datetime
 from typing import Dict
+from enum import Enum
 
 __author__ = 'JSmith' and 'SZhang'
 
@@ -249,6 +250,7 @@ class JSonLabels:
     """Magic strings for JSon export"""
     LABEL = "label"
     VALUE = "value"
+    TYPE = "type"
     NOTES = "notes"
     DURATION = "duration"
     START_TIME = "startDateTime"
@@ -267,6 +269,7 @@ class JSonLabels:
     VERSION_LONG = "versionLong"
     REVISION = "revision"
     BUILD_TESTED = "buildTested"
+    FILE_FORMAT = "fileFormat"
 
 
 class OpLabels:
@@ -284,36 +287,48 @@ class OpLabels:
     AVERAGE_BUILD = "AverageBuild"
 
 
+class OpResultType(Enum):
+    Unknown = 0
+    Duration = 1
+    FileSize = 2
+
+
 class OpResult:
     """Result of an operation"""
-    def __init__(self, label: str, duration: int, source_line: str = ""):
+    def __init__(self, label: str, value: int, type: OpResultType, source_line: str = ""):
         self.label = label
-        self.duration = duration
-        self.file_size = 0
+        self.value = value
+        self.type = type
         self.source_line = source_line
 
     def to_seconds(self):
         """Assuming value is a duration in ms, returns value in seconds."""
-        return self.duration/1000.0
+        return self.value/1000.0
 
     def to_megabytes(self):
         """Assuming file_size is kilobytes, return value in megabytes"""
-        return self.file_size / 1024.0
+        if self.type != OpResultType.FileSize:
+            print("to_megabytes called on an OpResult of type " + self.type)
+        return self.value / 1024.0
 
     def to_json_object(self):
         """Convert this OpResult into an object tailored for json serialization."""
         json_dict = {
             JSonLabels.LABEL: self.label,
-            JSonLabels.DURATION: self.duration,
-            JSonLabels.FILE_SIZE: self.file_size
+            JSonLabels.VALUE: self.value,
+            JSonLabels.TYPE: self.type.name
         }
         return json_dict
 
 
+class DurationOpResult(OpResult):
+    def __init__(self, label: str, duration: int, source_line: str = ""):
+        OpResult.__init__(self, label, duration, OpResultType.Duration, source_line)
+
+
 class FileSizeOpResult(OpResult):
     def __init__(self, label: str, file_size: int, source_line: str = ""):
-        OpResult.__init__(self, label, 0, source_line)
-        self.file_size = file_size
+        OpResult.__init__(self, label, file_size, OpResultType.FileSize, source_line)
 
 
 class TestMachine:
@@ -408,7 +423,7 @@ class TestResult:
 
         if len(self.run_times) != 0:
             for key, runTime in enumerate(self.run_times):
-                op = OpResult(self.run_labels[key], sec_to_ms(runTime))
+                op = DurationOpResult(self.run_labels[key], sec_to_ms(runTime))
                 json_op_results.append(op.to_json_object())
 
         return json_dict
@@ -418,7 +433,8 @@ class TestResult:
         total_ms = 0
 
         for op_result in self.op_results.values():
-            total_ms += op_result.duration
+            if op_result.type == OpResultType.Duration:
+                total_ms += op_result.value
 
         for run_time in self.run_times:
             total_ms += run_time
@@ -464,6 +480,7 @@ class TestSuiteRun:
         self.start_time = datetime.today()
         self.duration = 0
         self.build_info = BuildInfo("", "", 0)
+        self.fileFormat = "2"
 
     def append_result(self, result: TestResult):
         self.test_results.append(result)
@@ -493,6 +510,7 @@ class TestSuiteRun:
             JSonLabels.DURATION: self.duration,
             JSonLabels.START_TIME: datetime_in_utc_format(self.start_time),
             JSonLabels.BUILD_TESTED: self.build_info.to_json_object(),
+            JSonLabels.FILE_FORMAT: self.fileFormat,
         }
         return result
 
@@ -534,7 +552,7 @@ def collect_tc_stopwatch_data(test_result, test_dir, stopwatch_ops=None):
 
     for idx, line in enumerate(lines):
         if idx in stopwatch_ops:
-            op_result = OpResult(stopwatch_ops[idx], milliseconds_from_stopwatch_line(line), line)
+            op_result = DurationOpResult(stopwatch_ops[idx], milliseconds_from_stopwatch_line(line), line)
             test_result.add_op_result(op_result)
 
     return
@@ -658,7 +676,7 @@ def calculate_average_run_time_minus_first(test_run: TestResult, label_to_match)
 
 def add_average_result(test_run: TestResult, label_to_match, op_label):
     average_design = calculate_average_run_time_minus_first(test_run, label_to_match)
-    test_run.add_op_result(OpResult(op_label, average_design))
+    test_run.add_op_result(DurationOpResult(op_label, average_design))
 
 
 def basic_design_test_collector(test_dir, test_label):
