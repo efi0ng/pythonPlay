@@ -269,7 +269,6 @@ class JSonLabels:
     VERSION_LONG = "versionLong"
     REVISION = "revision"
     BUILD_TESTED = "buildTested"
-    FILE_FORMAT = "fileFormat"
 
 
 class OpLabels:
@@ -480,8 +479,7 @@ class TestSuiteRun:
         self.start_time = datetime.today()
         self.duration = 0
         self.build_info = BuildInfo("", "", 0)
-        self.fileFormat = "2"
-
+ 
     def append_result(self, result: TestResult):
         self.test_results.append(result)
 
@@ -510,7 +508,6 @@ class TestSuiteRun:
             JSonLabels.DURATION: self.duration,
             JSonLabels.START_TIME: datetime_in_utc_format(self.start_time),
             JSonLabels.BUILD_TESTED: self.build_info.to_json_object(),
-            JSonLabels.FILE_FORMAT: self.fileFormat,
         }
         return result
 
