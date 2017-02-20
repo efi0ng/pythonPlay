@@ -7,3 +7,5 @@
 
 
 *.xml text=auto
+*.zip binary
+*.7z binary
