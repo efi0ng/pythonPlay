@@ -672,8 +672,8 @@ def calculate_average_run_time_minus_first(test_run: TestResult, label_to_match)
 
 
 def add_average_result(test_run: TestResult, label_to_match, op_label):
-    average_design = calculate_average_run_time_minus_first(test_run, label_to_match)
-    test_run.add_op_result(DurationOpResult(op_label, average_design))
+    average_result = calculate_average_run_time_minus_first(test_run, label_to_match)
+    test_run.add_op_result(DurationOpResult(op_label, sec_to_ms(average_result)))
 
 
 def basic_design_test_collector(test_dir, test_label):
@@ -999,6 +999,7 @@ def scrape_test_runs(base_path, out_filename, tests_to_scrape):
 
 
 def main(base_path):
+    # It might be worth checking file structure at this point and bailing out if we dont recognise test data.
     global _output_file
     machine = test_machine_from_host()
 
