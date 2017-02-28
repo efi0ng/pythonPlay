@@ -199,8 +199,9 @@ def get_pamir_version_from_log(filename):
     # 2016-05-26 12:43:28,262 MiTek.Pamir INFO : Pamir 5.1.0 (Internal WIP 5.1.0.3149 (r70160)) starting
     # 2016-06-14 12:06:11,298 MiTek.Pamir INFO : Pamir 5.1.2 (5.1.2.38 (r70761)) starting
     # 2015-06-18 13:49:35,348 MiTek.Pamir INFO : Pamir 4.0.3 (56480) starting
-
-    _PAMIR_VERSION_LINE_REGEX = r"Pamir (\d{1}.\d{1}.\d{1}) \((.+)\) start"
+    # 2017-02-18 04:46:49,967 MiTek.Pamir INFO : Pamir 5.3.11 (Internal WIP 5.3.11.34844 (r79586)) starting
+ 
+    _PAMIR_VERSION_LINE_REGEX = r"Pamir (\d+.\d+.\d+) \((.+)\) start"
 
     version_short = ""
     version_full = ""
@@ -208,12 +209,14 @@ def get_pamir_version_from_log(filename):
 
     file = None
     try:
-        file = open(filename, mode="r", encoding="iso_8859_1", errors="ignore")
+        # file = open(filename, mode="r", encoding="iso_8859_1", errors="ignore")
+        file = open(filename, mode="r", encoding="utf8", errors="ignore")
 
         line = file.readline()
         while line:
             match = re.search(_PAMIR_VERSION_LINE_REGEX, line)
             if match:
+                print(line)
                 version_short = match.group(1)
                 version_full = match.group(2)
                 break
@@ -715,7 +718,11 @@ def nav_trim_test_collector(test_dir, test_label):
     # timings for other operations
     lines = get_matching_lines_from_file(perf_log_file, "Action.Execute\tComplete")
     test_result.run_times.append(search_seconds_from_perf_lines(lines, "Toggle automatic framing zone"))
-    test_result.run_times.append(search_seconds_from_perf_lines(lines, "Trim/Extend"))
+    trim_time = search_seconds_from_perf_lines(lines, "Trim/Extend")
+    if trim_time == 0.0:
+        # format changed some time in V6.0
+        trim_time = search_seconds_from_perf_lines(lines, "TrimExtendCommand")
+    test_result.run_times.append(trim_time)
 
     return test_result
 
