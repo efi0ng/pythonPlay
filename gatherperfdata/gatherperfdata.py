@@ -209,14 +209,12 @@ def get_pamir_version_from_log(filename):
 
     file = None
     try:
-        # file = open(filename, mode="r", encoding="iso_8859_1", errors="ignore")
         file = open(filename, mode="r", encoding="utf8", errors="ignore")
 
         line = file.readline()
         while line:
             match = re.search(_PAMIR_VERSION_LINE_REGEX, line)
             if match:
-                print(line)
                 version_short = match.group(1)
                 version_full = match.group(2)
                 break
