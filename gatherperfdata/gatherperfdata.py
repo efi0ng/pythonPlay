@@ -285,6 +285,10 @@ class OpLabels:
     AVERAGE_DESIGN = "AverageDesign"
     AVERAGE_CHECK = "AverageCheck"
     AVERAGE_BUILD = "AverageBuild"
+    FRAME_PAINT = "FramePaint"
+    FRAME_REFRESH = "FrameRefresh"
+    LAYOUT_PAINT = "LayoutPaint"
+    LAYOUT_REFRESH = "Refresh"
 
 
 class OpResultType(Enum):
@@ -725,9 +729,9 @@ def nav_trim_test_collector(test_dir, test_label):
     return test_result
 
 
-def benchmark_test_collector(test_dir, test_label, paint_op_label):
+def benchmark_test_collector(test_dir, test_label, op_labels):
     test_result = TestResult(test_label)
-    test_result.run_labels = [paint_op_label, "Refresh"]
+    test_result.run_labels = op_labels
 
     collect_pamir_start_and_duration(test_result, test_dir)
     collect_tc_stopwatch_data(test_result, test_dir)
@@ -739,11 +743,11 @@ def benchmark_test_collector(test_dir, test_label, paint_op_label):
 
 
 def frame_benchmark_test_collector(test_dir, test_label):
-    return benchmark_test_collector(test_dir, test_label, "FramePaint")
+    return benchmark_test_collector(test_dir, test_label, [OpLabels.FRAME_PAINT,OpLabels.FRAME_REFRESH])
 
 
 def layout_benchmark_test_collector(test_dir, test_label):
-    return benchmark_test_collector(test_dir, test_label, "LayoutPaint")
+    return benchmark_test_collector(test_dir, test_label, [OpLabels.LAYOUT_PAINT,OpLabels.LAYOUT_REFRESH])
 
 
 def fr_file_size_collector(test_dir, test_label):
