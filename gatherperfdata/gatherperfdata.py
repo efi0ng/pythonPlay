@@ -200,7 +200,7 @@ def get_pamir_version_from_log(filename):
     # 2016-06-14 12:06:11,298 MiTek.Pamir INFO : Pamir 5.1.2 (5.1.2.38 (r70761)) starting
     # 2015-06-18 13:49:35,348 MiTek.Pamir INFO : Pamir 4.0.3 (56480) starting
     # 2017-02-18 04:46:49,967 MiTek.Pamir INFO : Pamir 5.3.11 (Internal WIP 5.3.11.34844 (r79586)) starting
- 
+
     _PAMIR_VERSION_LINE_REGEX = r"Pamir (\d+.\d+.\d+) \((.+)\) start"
 
     version_short = ""
@@ -480,7 +480,7 @@ class TestSuiteRun:
         self.start_time = datetime.today()
         self.duration = 0
         self.build_info = BuildInfo("", "", 0)
- 
+
     def append_result(self, result: TestResult):
         self.test_results.append(result)
 
@@ -725,9 +725,9 @@ def nav_trim_test_collector(test_dir, test_label):
     return test_result
 
 
-def benchmark_test_collector(test_dir, test_label):
+def benchmark_test_collector(test_dir, test_label, paint_op_label):
     test_result = TestResult(test_label)
-    test_result.run_labels = ["LayoutPaint", "Refresh"]
+    test_result.run_labels = [paint_op_label, "Refresh"]
 
     collect_pamir_start_and_duration(test_result, test_dir)
     collect_tc_stopwatch_data(test_result, test_dir)
@@ -736,6 +736,14 @@ def benchmark_test_collector(test_dir, test_label):
     add_benchmark_run_times(test_result, tc_log_file)
 
     return test_result
+
+
+def frame_benchmark_test_collector(test_dir, test_label):
+    return benchmark_test_collector(test_dir, test_label, "FramePaint")
+
+
+def layout_benchmark_test_collector(test_dir, test_label):
+    return benchmark_test_collector(test_dir, test_label, "LayoutPaint")
 
 
 def fr_file_size_collector(test_dir, test_label):
@@ -1024,10 +1032,10 @@ def main(base_path):
         (frame_design_test_collector, "CHP_FDT10"),
         (hip_to_hip_plus_test_collector, "FR-HHT7"),
         (hip_to_hip_plus_test_collector, "UK-HHT8"),
-        (benchmark_test_collector, "FR_LWS9"),
+        (layout_benchmark_test_collector, "FR_LWS9"),
         (uk_thousand_objects_test_collector, "UK_TDOT17"),
-        (benchmark_test_collector, "SW_FBMT11"),
-        (benchmark_test_collector, "UK_HT1_FBMT12"),
+        (frame_benchmark_test_collector, "SW_FBMT11"),
+        (frame_benchmark_test_collector, "UK_HT1_FBMT12"),
         (output_pdf_test_collector, "ISOLA_PDF13"),
         (output_pdf_test_collector, "UK_LayoutPDF14"),
         (uk_disable_hanger_hip_test_collector, "UK-DISH15"),
