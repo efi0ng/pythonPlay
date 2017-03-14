@@ -21,7 +21,7 @@ Several more tests have been added since.
 
 _debug = False
 _output_file = None
-_TEST_SUITE_LABEL = "TestComplete"
+_TEST_SUITE_LABEL = "tc-europmrtest2"
 
 # ---------------------------------------------------------
 '''
