@@ -86,8 +86,11 @@ def main(target_lang, res_folder, out_tmx):
     doc = Document(target_resx)
     src_items = read_source(eng_resx)
     trans_units = build_trans_units(src_items, target_lang, target_resx)
-    
-    print (tmx_template(items=trans_units, document = doc))
+
+    tmx_str = tmx_template(items=trans_units, document = doc)
+
+    with open(out_tmx, 'w') as outfile:
+        print(tmx_str, file=outfile)
 
     
 if __name__ == "__main__":
