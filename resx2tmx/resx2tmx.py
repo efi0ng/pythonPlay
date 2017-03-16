@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 import os.path
 from chameleon import PageTemplateLoader
@@ -15,6 +16,8 @@ RESX2TMX_VERSION = 0.2
 TEMPLATE_DIR = "templates"
 TEMPLATE = "template.tmx"
 TIMESTAMP_JSON_FORMAT = "%Y%m%dT%H%M%SZ"
+ENG_RESX_FILE="Resources.resx"
+RESX_FILE_FMT="Resources.{}.resx"
 RESX_DATA_NODE = "data"
 RESX_VALUE_NODE = "value"
 RESX_KEY = "name"
@@ -26,7 +29,7 @@ class Document:
         self.target_doc = os.path.abspath(target_doc)
         self.tool_version = RESX2TMX_VERSION
 
-class TranslationItem:
+class TranslationUnit:
     def __init__(self, src_lang, src_text, target_lang, target_text):
         self.source_lang = ENGLISH_LANG
         self.source_text = src_text
@@ -34,46 +37,65 @@ class TranslationItem:
         self.target_text = target_text
 
 
-def read_source_items(resx_file):
-    source_items = {}
-
+def read_resx_items(resx_file, dict_func):
+    """For each item in resx file call dict_func(key, value)"""
     root = elementTree.parse(resx_file)
     for data_node in root.findall(RESX_DATA_NODE):
         key = data_node.get(RESX_KEY)
         value = data_node.find(RESX_VALUE_NODE).text
+        dict_func(key,value)
+
+
+def read_source(resx_file):
+    source_items = {}
+    def dict_func(key, value):
         source_items[key] = value
 
+    read_resx_items(resx_file, dict_func)
     return source_items
 
 
-def main(target_lang_resx, out_tmx):
-    print("Using {} to create a TMX file {}".format(target_lang_resx, out_tmx))
+def build_trans_units(source_items, target_lang, target_resx):
+    trans_units = []
+    def dict_func(key, value):
+        if key in source_items:
+            tu = TranslationUnit(ENGLISH_LANG,source_items[key],target_lang,value)
+            trans_units.append(tu)
 
-    if not os.path.exists(target_lang_resx):
-        print("File '{}' does not exist.".format(target_lang_resx))
+    read_resx_items(target_resx, dict_func)
+    return trans_units
+
+
+def main(target_lang, res_folder, out_tmx):
+    eng_resx = os.path.join(res_folder, ENG_RESX_FILE)
+    target_resx = os.path.join(res_folder, RESX_FILE_FMT.format(target_lang))
+    
+    print("Using {} to create a TMX file {}".format(target_resx, out_tmx))
+
+    if not os.path.exists(eng_resx):
+        print("File '{}' does not exist.".format(eng_resx))
+        return
+        
+    if not os.path.exists(target_resx):
+        print("File '{}' does not exist.".format(target_resx))
         return
 
     templates = PageTemplateLoader(os.path.abspath(TEMPLATE_DIR))
     tmx_template = templates[TEMPLATE]
 
-    doc = Document(target_lang_resx)
-    # todo parse the resx files :)
-    item1 = TranslationItem("en","hello","fr","bonjour") 
-    item2 = TranslationItem("en","what","fr","quoi") 
-    trans_units = [item1, item2]
-
+    doc = Document(target_resx)
+    src_items = read_source(eng_resx)
+    trans_units = build_trans_units(src_items, target_lang, target_resx)
+    
     print (tmx_template(items=trans_units, document = doc))
-    src_items = read_source_items(target_lang_resx)
 
-    #TODO: Deduce the English language res file from the supplied filename
-
-
+    
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: {} <target_lang_resx>".format(sys.argv[0]))
+        print("Usage: {} <target_lang> <res_folder> <out_tmx>".format(sys.argv[0]))
         exit()
 
-    #TODO: Change this to take a directory and a target language
-    target_lang_resx = sys.argv[1] if sys.argv[1] != "-" else r"./testdata/Resources.fr.resx"
-    out_tmx = sys.argv[2] if sys.argv[2] != "-" else r"./testout/Translations.tmx"
-    main(target_lang_resx, out_tmx)
+    target_lang = sys.argv[1] if sys.argv[1] != "-" else "fr"
+    res_folder = sys.argv[2] if sys.argv[2] != "-" else r"./testdata"
+    out_tmx = sys.argv[3] if sys.argv[3] != "-" else r"./testout/Translations.tmx"
+    main(target_lang, res_folder, out_tmx)
