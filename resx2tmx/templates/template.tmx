@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<tmx
+  version="1.4"
+  xmlns:tal="http://xml.zope.org/namespaces/tal">
+  <header
+    creationtool="Resx2tmx"
+    creationtoolversion="0.1"
+    segtype="sentence"
+    o-tmf="MadCap Lingo Translation Memory"
+    adminlang="en-US"
+    srclang="*all*"
+    datatype="x-sample"
+    creationdate="20170315T104152Z" />
+  <body>
+    <tu tal:repeat="item items"
+      creationid="resx2tmx"
+      creationdate="20170315T104047Z">
+      <tuv
+        xml:lang="en"
+        changedate="20170315T104047Z"
+        creationdate="20170315T104047Z"
+        creationid="resx2tmx"
+        changeid="resx2tmx">
+          <prop type="x-project">Resx2Tmx</prop>
+          <prop type="x-document" tal:content="source_doc"/>
+          <seg tal:content="item.source"/>
+      </tuv>
+      <tuv
+        xml:lang="fr"
+        changedate="20170315T104047Z"
+        creationdate="20170315T104047Z"
+        creationid="resx2tmx"
+        changeid="resx2tmx">
+        <prop
+          type="x-project">Resx2Tmx</prop>
+        <prop
+          type="x-document" tal:content="source_doc"/>
+        <seg tal:content="item.target"/>
+        </tuv>
+    </tu>
+  </body>
+</tmx>
