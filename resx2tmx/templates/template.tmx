@@ -4,38 +4,36 @@
   xmlns:tal="http://xml.zope.org/namespaces/tal">
   <header
     creationtool="Resx2tmx"
-    creationtoolversion="0.1"
+    creationtoolversion="${document.tool_version}"
     segtype="sentence"
     o-tmf="MadCap Lingo Translation Memory"
     adminlang="en-US"
     srclang="*all*"
     datatype="x-sample"
-    creationdate="20170315T104152Z" />
+    creationdate="${document.datetime}" />
   <body>
     <tu tal:repeat="item items"
       creationid="resx2tmx"
-      creationdate="20170315T104047Z">
+      creationdate="${document.datetime}">
       <tuv
-        xml:lang="en"
-        changedate="20170315T104047Z"
-        creationdate="20170315T104047Z"
+        xml:lang="${item.source_lang}"
+        changedate="${document.datetime}"
+        creationdate="${document.datetime}"
         creationid="resx2tmx"
         changeid="resx2tmx">
           <prop type="x-project">Resx2Tmx</prop>
-          <prop type="x-document" tal:content="source_doc"/>
-          <seg tal:content="item.source"/>
+          <prop type="x-document">${document.target_doc}</prop>
+          <seg>${item.source_text}</seg>
       </tuv>
       <tuv
-        xml:lang="fr"
-        changedate="20170315T104047Z"
-        creationdate="20170315T104047Z"
+        xml:lang="${item.target_lang}"
+        changedate="${document.datetime}"
+        creationdate="${document.datetime}"
         creationid="resx2tmx"
         changeid="resx2tmx">
-        <prop
-          type="x-project">Resx2Tmx</prop>
-        <prop
-          type="x-document" tal:content="source_doc"/>
-        <seg tal:content="item.target"/>
+            <prop type="x-project">Resx2Tmx</prop>
+            <prop type="x-document">${document.target_doc}</prop>
+            <seg>${item.target_text}</seg>
         </tuv>
     </tu>
   </body>
