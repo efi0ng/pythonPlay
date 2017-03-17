@@ -6,6 +6,7 @@ import json
 from gatherperfdata import JSonLabels, OpLabels, TestLabels, TEST_SUITE_LABEL, OpResultType
 import re
 
+
 def treat_build_number(data, source_file):
     """Look for and correct build version missing."""
     build_tested = data[JSonLabels.BUILD_TESTED]
@@ -131,7 +132,7 @@ def treat_basic_avg_ops(data):
 
 
 def treat_frame_ops(data):
-    """This will fix all ops that say LayoutPaint when they should be FramePaint"""
+    """Fix all ops that say LayoutPaint when they should be FramePaint"""
     def test_selector(label):
         return label == TestLabels.SW_FORMWORK_TEST or label == TestLabels.UK_FBMT_TEST
 
@@ -146,6 +147,22 @@ def treat_frame_ops(data):
                 op[JSonLabels.LABEL] = OpLabels.FRAME_REFRESH
 
 
+def treat_bson_compat(data):
+    """ Make any necessary alterations for this JSon to be interpreted as Extended Strict JSon.
+    This allows MongoDB to convert it to BSON correctly whilst still retaining human readability.
+    """
+    def convert_date(json_obj):
+        if JSonLabels.START_TIME not in json_obj:
+            return
+
+        start_time = json_obj[JSonLabels.START_TIME]
+        json_obj[JSonLabels.START_TIME] = {"$date": start_time}
+
+    convert_date(data)
+    for test_result in data[JSonLabels.TEST_RESULTS]:
+        convert_date(test_result)
+
+
 def main(source_path, target_path):
     print("Converting files in {}. Output to {}".format(source_path, target_path))
 
@@ -157,9 +174,8 @@ def main(source_path, target_path):
         print("Folder '{}' does not exist.".format(target_path))
         return
 
-
     source_files = [name for name in os.listdir(source_path)
-                   if os.path.isfile(os.path.join(source_path, name)) and name.endswith(".json")]
+                    if os.path.isfile(os.path.join(source_path, name)) and name.endswith(".json")]
 
     for source_file in source_files:
         current_filepath = os.path.join(source_path, source_file)
@@ -173,6 +189,7 @@ def main(source_path, target_path):
             treat_op_structure(data)
             treat_basic_avg_ops(data)
             treat_frame_ops(data)
+            treat_bson_compat(data)
 
             with open(target_filepath, 'w') as f:
                 json.dump(data, f, indent=3, sort_keys=True)
