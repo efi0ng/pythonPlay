@@ -3,7 +3,7 @@
 import sys
 import os.path
 import json
-from gatherperfdata import JSonLabels, OpLabels, TestLabels, TEST_SUITE_LABEL
+from gatherperfdata import JSonLabels, OpLabels, TestLabels, TEST_SUITE_LABEL, OpResultType
 import re
 
 def treat_build_number(data, source_file):
@@ -44,7 +44,35 @@ def treat_op_structure(data):
     if len(op_results) == 0:
         return
 
-    return
+    # if one op has correct format they all will
+    if JSonLabels.TYPE in op_results[0]:
+        return
+
+    for test_result in test_results:
+        for op_result in test_result[JSonLabels.OP_RESULTS]:
+            if JSonLabels.TYPE in op_result:
+                continue
+
+            # There was another iteration of the format that just had label and value
+            filesize = 0
+            if JSonLabels.FILE_SIZE in op_result:
+                filesize = op_result.pop(JSonLabels.FILE_SIZE)
+            elif op_result[JSonLabels.LABEL] == OpLabels.FILE_SIZE:
+                filesize = op_result[JSonLabels.VALUE]
+
+            duration = 0
+            if filesize == 0:
+                if JSonLabels.DURATION in op_result:
+                    duration = op_result.pop(JSonLabels.DURATION)
+                else:
+                    duration = op_result[JSonLabels.VALUE]
+
+            if filesize > 0:
+                op_result[JSonLabels.TYPE] = OpResultType.FileSize.name
+                op_result[JSonLabels.VALUE] = filesize
+            else:
+                op_result[JSonLabels.TYPE] = OpResultType.Duration.name
+                op_result[JSonLabels.VALUE] = duration
 
 
 def test_result_iter(data, label_sel_func):
@@ -136,17 +164,25 @@ def main(source_path, target_path):
     for source_file in source_files:
         current_filepath = os.path.join(source_path, source_file)
         target_filepath = os.path.join(target_path, source_file)
-        with open(current_filepath, 'r') as f:
-            data = json.load(f)
+        try:
+            with open(current_filepath, 'r') as f:
+                data = json.load(f)
 
-        #treat_build_number(data, source_file)
-        #treat_suite_label(data)
-        #treat_op_structure(data)
-        treat_basic_avg_ops(data)
-        treat_frame_ops(data)
+            treat_build_number(data, source_file)
+            treat_suite_label(data)
+            treat_op_structure(data)
+            treat_basic_avg_ops(data)
+            treat_frame_ops(data)
 
-        with open(target_filepath, 'w') as f:
-            json.dump(data, f, indent=3, sort_keys=True)
+            with open(target_filepath, 'w') as f:
+                json.dump(data, f, indent=3, sort_keys=True)
+
+        except Exception as e:
+            from traceback import print_tb
+            print("Error processing: {}".format(source_file))
+            print("{} : {}".format(sys.exc_info()[0].__name__,sys.exc_info()[1]))
+            print_tb(sys.exc_info()[2])
+            exit()
 
 
 if __name__ == "__main__":
