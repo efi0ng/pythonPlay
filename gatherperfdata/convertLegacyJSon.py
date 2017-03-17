@@ -3,7 +3,7 @@
 import sys
 import os.path
 import json
-from gatherperfdata import JSonLabels, OpLabels
+from gatherperfdata import JSonLabels, OpLabels, _TEST_SUITE_LABEL
 import re
 
 def treat_build_number(data, source_file):
@@ -16,7 +16,7 @@ def treat_build_number(data, source_file):
     REGEX = r"r([0-9]+).*?v([0-9.]+)"
     match = re.search(REGEX, source_file) 
     if match is None:
-        print("Could not fix {}".format(source_file), sys.stderr)
+        print("Could not fix build num for: {}".format(source_file), sys.stderr)
         return
 
     rev = int(match.group(1))
@@ -26,8 +26,36 @@ def treat_build_number(data, source_file):
     build_tested[JSonLabels.VERSION_LONG] = ver
     
 
+def treat_suite_label(data):
+    """Changes old TestComplete to the new label"""
+    if data[JSonLabels.TEST_SUITE_LABEL] != "TestComplete":
+        return
+
+    data[JSonLabels.TEST_SUITE_LABEL] = _TEST_SUITE_LABEL
+
+
+def treat_op_structure(data):
+    """This will convert old format duration/filesize to new."""
+    test_results = data[JSonLabels.TEST_RESULTS]
+    if len(test_results) == 0:
+        return
+
+    op_results  = test_results[0][JSonLabels.OP_RESULTS]
+    if len(op_results) == 0:
+        return
+
+    
+    return
+
+
+def treat_basic_avg_ops(data):
+    """This will recalculate the averages in ms."""
+    return
+
+
+
+    
 def main(source_path, target_path):
-    # todo: write intelligent code here
     print("Converting files in {}. Output to {}".format(source_path, target_path))
 
     if not os.path.exists(source_path):
@@ -42,8 +70,6 @@ def main(source_path, target_path):
     source_files = [name for name in os.listdir(source_path)
                    if os.path.isfile(os.path.join(source_path, name)) and name.endswith(".json")]
 
-    #print(source_files)
-
     for source_file in source_files:
         current_filepath = os.path.join(source_path, source_file)
         target_filepath = os.path.join(target_path, source_file)
@@ -51,8 +77,10 @@ def main(source_path, target_path):
             data = json.load(f)
 
         treat_build_number(data, source_file)
-
-        print(data[JSonLabels.BUILD_TESTED])
+        treat_suite_label(data)
+        treat_op_structure(data)
+        treat_basic_avg_ops(data)
+        
         with open(target_filepath, 'w') as f:
             json.dump(data, f, indent=3, sort_keys=True)
 
