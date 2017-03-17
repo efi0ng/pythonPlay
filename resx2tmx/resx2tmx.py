@@ -58,7 +58,7 @@ def read_source(resx_file):
 def build_trans_units(source_items, target_lang, target_resx):
     trans_units = []
     def dict_func(key, value):
-        if key in source_items:
+        if key in source_items and source_items[key] != value:
             tu = TranslationUnit(ENGLISH_LANG,source_items[key],target_lang,value)
             trans_units.append(tu)
 
@@ -69,13 +69,13 @@ def build_trans_units(source_items, target_lang, target_resx):
 def main(target_lang, res_folder, out_tmx):
     eng_resx = os.path.join(res_folder, ENG_RESX_FILE)
     target_resx = os.path.join(res_folder, RESX_FILE_FMT.format(target_lang))
-    
+
     print("Using {} to create a TMX file {}".format(target_resx, out_tmx))
 
     if not os.path.exists(eng_resx):
         print("File '{}' does not exist.".format(eng_resx))
         return
-        
+
     if not os.path.exists(target_resx):
         print("File '{}' does not exist.".format(target_resx))
         return
@@ -89,10 +89,10 @@ def main(target_lang, res_folder, out_tmx):
 
     tmx_str = tmx_template(items=trans_units, document = doc)
 
-    with open(out_tmx, 'w') as outfile:
+    with open(out_tmx, 'w',encoding='utf8') as outfile:
         print(tmx_str, file=outfile)
 
-    
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: {} <target_lang> <res_folder> <out_tmx>".format(sys.argv[0]))
