@@ -21,7 +21,7 @@ Several more tests have been added since.
 
 _debug = False
 _output_file = None
-_TEST_SUITE_LABEL = "tc-europmrtest2"
+TEST_SUITE_LABEL = "tc-europmrtest2"
 
 # ---------------------------------------------------------
 '''
@@ -245,6 +245,10 @@ def get_pamir_version_from_log(filename):
 # ---------------------------------------------------------
 # Model classes inc. TestResult
 # ---------------------------------------------------------
+
+class TestLabels:
+    SW_FORMWORK_TEST = "SW_FBMT11"
+    UK_FBMT_TEST = "UK_HT1_FBMT12"
 
 
 class JSonLabels:
@@ -1020,7 +1024,7 @@ def main(base_path):
     global _output_file
     machine = test_machine_from_host()
 
-    test_suite_run = TestSuiteRun(_TEST_SUITE_LABEL, machine)
+    test_suite_run = TestSuiteRun(TEST_SUITE_LABEL, machine)
 
     basic_tests = [
         (basic_design_test_collector, "DPT1"),
@@ -1038,8 +1042,8 @@ def main(base_path):
         (hip_to_hip_plus_test_collector, "UK-HHT8"),
         (layout_benchmark_test_collector, "FR_LWS9"),
         (uk_thousand_objects_test_collector, "UK_TDOT17"),
-        (frame_benchmark_test_collector, "SW_FBMT11"),
-        (frame_benchmark_test_collector, "UK_HT1_FBMT12"),
+        (frame_benchmark_test_collector, TestLabels.SW_FORMWORK_TEST),
+        (frame_benchmark_test_collector, TestLabels.UK_FBMT_TEST),
         (output_pdf_test_collector, "ISOLA_PDF13"),
         (output_pdf_test_collector, "UK_LayoutPDF14"),
         (uk_disable_hanger_hip_test_collector, "UK-DISH15"),

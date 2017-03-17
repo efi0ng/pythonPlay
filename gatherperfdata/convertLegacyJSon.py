@@ -3,7 +3,7 @@
 import sys
 import os.path
 import json
-from gatherperfdata import JSonLabels, OpLabels, _TEST_SUITE_LABEL
+from gatherperfdata import JSonLabels, OpLabels, TestLabels, TEST_SUITE_LABEL
 import re
 
 def treat_build_number(data, source_file):
@@ -31,7 +31,7 @@ def treat_suite_label(data):
     if data[JSonLabels.TEST_SUITE_LABEL] != "TestComplete":
         return
 
-    data[JSonLabels.TEST_SUITE_LABEL] = _TEST_SUITE_LABEL
+    data[JSonLabels.TEST_SUITE_LABEL] = TEST_SUITE_LABEL
 
 
 def treat_op_structure(data):
@@ -45,6 +45,14 @@ def treat_op_structure(data):
         return
 
     return
+
+
+def test_result_iter(data, label_sel_func):
+    test_results = data[JSonLabels.TEST_RESULTS]
+    for test_result in test_results:
+        test_label = test_result[JSonLabels.LABEL]
+        if label_sel_func(test_label):
+            yield (test_label, test_result)
 
 
 def treat_basic_avg_ops(data):
@@ -82,12 +90,10 @@ def treat_basic_avg_ops(data):
             else:
                 op[JSonLabels.VALUE] = avg
 
-    test_results = data[JSonLabels.TEST_RESULTS]
-    for test_result in test_results:
-        test_label = test_result[JSonLabels.LABEL]
-        if test_label != "DPT1" and test_label != "DPT2" and test_label != "BBT3":
-            continue
+    def test_selector(label):
+        return label == "DPT1" or label == "DPT2" or label == "BBT3"
 
+    for (test_label, test_result) in test_result_iter(data, test_selector):
         if test_label == "BBT3":
             calc_avg(test_result, "Build")
         else:
@@ -96,9 +102,20 @@ def treat_basic_avg_ops(data):
     return
 
 
-def treat_frame_paint(data):
+def treat_frame_ops(data):
     """This will fix all ops that say LayoutPaint when they should be FramePaint"""
-    return
+    def test_selector(label):
+        return label == TestLabels.SW_FORMWORK_TEST or label == TestLabels.UK_FBMT_TEST
+
+    for (test_label, test_result) in test_result_iter(data, test_selector):
+        op_results = test_result[JSonLabels.OP_RESULTS]
+        for op in op_results:
+            op_label = op[JSonLabels.LABEL]
+            if op_label == "LayoutPaint":
+                op[JSonLabels.LABEL] = OpLabels.FRAME_PAINT
+
+            if op_label == "Refresh":
+                op[JSonLabels.LABEL] = OpLabels.FRAME_REFRESH
 
 
 def main(source_path, target_path):
@@ -122,11 +139,11 @@ def main(source_path, target_path):
         with open(current_filepath, 'r') as f:
             data = json.load(f)
 
-        treat_build_number(data, source_file)
-        treat_suite_label(data)
-        treat_op_structure(data)
+        #treat_build_number(data, source_file)
+        #treat_suite_label(data)
+        #treat_op_structure(data)
         treat_basic_avg_ops(data)
-        treat_frame_paint(data)
+        treat_frame_ops(data)
 
         with open(target_filepath, 'w') as f:
             json.dump(data, f, indent=3, sort_keys=True)
