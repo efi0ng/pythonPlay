@@ -24,7 +24,7 @@ def treat_build_number(data, source_file):
     build_tested[JSonLabels.REVISION] = rev
     build_tested[JSonLabels.VERSION_SHORT] = ver
     build_tested[JSonLabels.VERSION_LONG] = ver
-    
+
 
 def treat_suite_label(data):
     """Changes old TestComplete to the new label"""
@@ -44,15 +44,63 @@ def treat_op_structure(data):
     if len(op_results) == 0:
         return
 
-    
     return
 
 
 def treat_basic_avg_ops(data):
     """This will recalculate the averages in ms."""
+    def calc_avg(test_res, op_name):
+        total_duration = 0
+        op_count = 0
+        op_results = test_res[JSonLabels.OP_RESULTS]
+        for op in op_results:
+            op_label = op[JSonLabels.LABEL]
+            if (not op_label.startswith(op_name)) or op_label.endswith("1"):
+                continue
+
+            op_count += 1
+            if JSonLabels.DURATION in op:
+                total_duration += op[JSonLabels.DURATION]
+            else:
+                total_duration += op[JSonLabels.VALUE]
+
+        if op_count == 0:
+            # can happen if the test failed
+            return
+
+        avg = int(total_duration/op_count)
+        avg_label = "Average" + op_name
+
+        # find average result and update it
+        for op in op_results:
+            op_label = op[JSonLabels.LABEL]
+            if not op_label == avg_label:
+                continue
+
+            if JSonLabels.DURATION in op:
+                op[JSonLabels.DURATION] = avg
+            else:
+                op[JSonLabels.VALUE] = avg
+
+    test_results = data[JSonLabels.TEST_RESULTS]
+    for test_result in test_results:
+        test_label = test_result[JSonLabels.LABEL]
+        if test_label != "DPT1" and test_label != "DPT2" and test_label != "BBT3":
+            continue
+
+        if test_label == "BBT3":
+            calc_avg(test_result, "Build")
+        else:
+            calc_avg(test_result, "Check")
+            calc_avg(test_result, "Design")
     return
 
-    
+
+def treat_frame_paint(data):
+    """This will fix all ops that say LayoutPaint when they should be FramePaint"""
+    return
+
+
 def main(source_path, target_path):
     print("Converting files in {}. Output to {}".format(source_path, target_path))
 
@@ -78,11 +126,12 @@ def main(source_path, target_path):
         treat_suite_label(data)
         treat_op_structure(data)
         treat_basic_avg_ops(data)
-        
+        treat_frame_paint(data)
+
         with open(target_filepath, 'w') as f:
             json.dump(data, f, indent=3, sort_keys=True)
 
-            
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: {} <source_path> <target_path>".format(sys.argv[0]))
