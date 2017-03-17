@@ -52,8 +52,6 @@ def treat_basic_avg_ops(data):
     """This will recalculate the averages in ms."""
     return
 
-
-
     
 def main(source_path, target_path):
     print("Converting files in {}. Output to {}".format(source_path, target_path))
