@@ -3,7 +3,8 @@
 import sys
 import os.path
 import json
-from gatherperfdata import JSonLabels, OpLabels, TestLabels, TEST_SUITE_LABEL, OpResultType
+from gatherperfdata import (JSonLabels, OpLabels, TestLabels,
+                            TEST_SUITE_LABEL, OpResultType)
 import re
 
 
@@ -15,9 +16,10 @@ def treat_build_number(data, source_file):
         return
 
     REGEX = r"r([0-9]+).*?v([0-9.]+)"
-    match = re.search(REGEX, source_file) 
+    match = re.search(REGEX, source_file)
     if match is None:
-        print("Could not fix build num for: {}".format(source_file), sys.stderr)
+        msg = "Could not fix build num for: {}".format(source_file)
+        print(msg, sys.stderr)
         return
 
     rev = int(match.group(1))
@@ -41,7 +43,7 @@ def treat_op_structure(data):
     if len(test_results) == 0:
         return
 
-    op_results  = test_results[0][JSonLabels.OP_RESULTS]
+    op_results = test_results[0][JSonLabels.OP_RESULTS]
     if len(op_results) == 0:
         return
 
@@ -54,7 +56,7 @@ def treat_op_structure(data):
             if JSonLabels.TYPE in op_result:
                 continue
 
-            # There was another iteration of the format that just had label and value
+            # another iteration of the format that just had label and value
             filesize = 0
             if JSonLabels.FILE_SIZE in op_result:
                 filesize = op_result.pop(JSonLabels.FILE_SIZE)
@@ -134,7 +136,8 @@ def treat_basic_avg_ops(data):
 def treat_frame_ops(data):
     """Fix all ops that say LayoutPaint when they should be FramePaint"""
     def test_selector(label):
-        return label == TestLabels.SW_FORMWORK_TEST or label == TestLabels.UK_FBMT_TEST
+        return (label == TestLabels.SW_FORMWORK_TEST
+                or label == TestLabels.UK_FBMT_TEST)
 
     for (test_label, test_result) in test_result_iter(data, test_selector):
         op_results = test_result[JSonLabels.OP_RESULTS]
@@ -148,15 +151,35 @@ def treat_frame_ops(data):
 
 
 def treat_bson_compat(data):
-    """ Make any necessary alterations for this JSon to be interpreted as Extended Strict JSon.
-    This allows MongoDB to convert it to BSON correctly whilst still retaining human readability.
+    """ Make necessary alterations for JSon to be strict.
+    This allows MongoDB to convert it to BSON correctly whilst still
+    retaining human readability.
     """
+    BSON_DATE = "$date"
+
+    def conversion_necessary():
+        # check if conversion necessary
+        if JSonLabels.TEST_RESULTS not in data:
+            return False
+
+        test_res = data[JSonLabels.TEST_RESULTS]
+        if len(test_res) < 1:
+            return False
+
+        if BSON_DATE in test_res[0][JSonLabels.START_TIME]:
+            return False
+
+        return True
+
     def convert_date(json_obj):
         if JSonLabels.START_TIME not in json_obj:
             return
 
         start_time = json_obj[JSonLabels.START_TIME]
-        json_obj[JSonLabels.START_TIME] = {"$date": start_time}
+        json_obj[JSonLabels.START_TIME] = {BSON_DATE: start_time}
+
+    if not conversion_necessary():
+        return
 
     convert_date(data)
     for test_result in data[JSonLabels.TEST_RESULTS]:
@@ -164,7 +187,8 @@ def treat_bson_compat(data):
 
 
 def main(source_path, target_path):
-    print("Converting files in {}. Output to {}".format(source_path, target_path))
+    print("Converting files in {}. Output to {}"
+          .format(source_path, target_path))
 
     if not os.path.exists(source_path):
         print("Folder '{}' does not exist.".format(source_path))
@@ -175,7 +199,8 @@ def main(source_path, target_path):
         return
 
     source_files = [name for name in os.listdir(source_path)
-                    if os.path.isfile(os.path.join(source_path, name)) and name.endswith(".json")]
+                    if (os.path.isfile(os.path.join(source_path, name))
+                        and name.endswith(".json"))]
 
     for source_file in source_files:
         current_filepath = os.path.join(source_path, source_file)
@@ -197,7 +222,8 @@ def main(source_path, target_path):
         except Exception as e:
             from traceback import print_tb
             print("Error processing: {}".format(source_file))
-            print("{} : {}".format(sys.exc_info()[0].__name__,sys.exc_info()[1]))
+            print("{} : {}".format(sys.exc_info()[0].__name__,
+                                   sys.exc_info()[1]))
             print_tb(sys.exc_info()[2])
             exit()
 
