@@ -274,6 +274,7 @@ class JSonLabels:
     VERSION_LONG = "versionLong"
     REVISION = "revision"
     BUILD_TESTED = "buildTested"
+    BSON_DATE = "$date"
 
 
 class OpLabels:
@@ -423,7 +424,9 @@ class TestResult:
         json_dict = {
             JSonLabels.LABEL: self.label,
             JSonLabels.OP_RESULTS: json_op_results,
-            JSonLabels.START_TIME: datetime_in_utc_format(self.start_time),
+            JSonLabels.START_TIME: {
+                JSonLabels.BSON_DATE: datetime_in_utc_format(self.start_time)
+            },
             JSonLabels.DURATION: self.duration,
             JSonLabels.STATUS: self.status,
         }
@@ -520,7 +523,9 @@ class TestSuiteRun:
             JSonLabels.NOTES: self.notes,
             JSonLabels.MACHINE: self.machine.to_json_object(),
             JSonLabels.DURATION: self.duration,
-            JSonLabels.START_TIME: datetime_in_utc_format(self.start_time),
+            JSonLabels.START_TIME: {
+                JSonLabels.BSON_DATE: datetime_in_utc_format(self.start_time)
+            },
             JSonLabels.BUILD_TESTED: self.build_info.to_json_object(),
         }
         return result
