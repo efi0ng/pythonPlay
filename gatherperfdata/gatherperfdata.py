@@ -393,7 +393,9 @@ def test_machine_from_host():
     machine.name = platform.node()
     machine.processor = cpuinfo.get_cpu_info()["brand"]
     machine.logical_cores = cpu_count()
-    machine.operating_system = "{} {} ({})".format(platform.system(), platform.release(), platform.version())
+    machine.operating_system = "{} {} ({})".format(platform.system(),
+                                                   platform.release(),
+                                                   platform.version())
     machine.memory = int(virtual_memory().total / (1024 * 1024))
 
     return machine
@@ -415,7 +417,7 @@ class TestResult:
         self.op_results[op_result.label] = op_result
 
     def to_json_object(self):
-        """Convert this TestResult into an object tailored for json serialization."""
+        """Convert to object tailored for json serialization."""
         json_op_results = []
 
         json_dict = {
@@ -451,7 +453,8 @@ class TestResult:
 
     def optional_timed_op_to_file(self, op_label, outfile):
         if op_label in self.op_results:
-            print("{:.3f}".format(self.op_results[op_label].to_seconds()), file=outfile)
+            print("{:.3f}".format(self.op_results[op_label].to_seconds()),
+                  file=outfile)
 
     def to_file(self, outfile):
         if _debug:
@@ -467,14 +470,15 @@ class TestResult:
             for runTime in self.run_times:
                 print("{:.3f}".format(runTime), file=outfile)
 
-        for op_label in [OpLabels.SAPPHIRE_REPORT,  # generating Sapphire Report
+        for op_label in [OpLabels.SAPPHIRE_REPORT,
                          OpLabels.PAMIR_SHUTDOWN,
-                         OpLabels.SAPPHIRE_SHUTDOWN,  # Sapphire reports viewer shutdown
+                         OpLabels.SAPPHIRE_SHUTDOWN,  # viewer
                          OpLabels.TWENTY20_SHUTDOWN]:
             self.optional_timed_op_to_file(op_label, outfile)
 
         if OpLabels.FILE_SIZE in self.op_results:
-            print("{:.3f}".format(self.op_results[OpLabels.FILE_SIZE].to_megabytes()), file=outfile)
+            mbytes = self.op_results[OpLabels.FILE_SIZE].to_megabytes()
+            print("{:.3f}".format(mbytes), file=outfile)
 
         print("", file=outfile)  # new line to create a gap for next result
 
@@ -501,7 +505,8 @@ class TestSuiteRun:
 
         for i in range(1, len(self.test_results)):
             next_result = self.test_results[i]
-            if next_result.start_time is not None and next_result.start_time < self.start_time:
+            if (next_result.start_time is not None
+                and next_result.start_time < self.start_time):
                 self.start_time = next_result.start_time
 
             self.duration += next_result.duration
@@ -522,7 +527,8 @@ class TestSuiteRun:
 
     def to_json_file(self, filename: str):
         with open(filename, mode="w") as jsonFile:
-            json.dump(self.to_json_object(), jsonFile, indent=3, sort_keys=True)
+            json.dump(self.to_json_object(), jsonFile, indent=3,
+                      sort_keys=True)
 
 # ---------------------------------------------------------
 # Data collection - general
