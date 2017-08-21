@@ -74,7 +74,7 @@ def xpand_boq(boq_file, out_file):
     strip_str = lambda s: s.strip()
 
     with open(out_file, 'w',encoding='utf8') as xboq_out:
-        with open(boq_file, 'r',encoding='utf8') as boq_in:
+        with open(boq_file, 'r',encoding='latin_1') as boq_in:
             line = boq_in.readline()
 
             while line:
