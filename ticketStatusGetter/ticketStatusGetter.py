@@ -27,7 +27,6 @@ def main():
         decodedResponse = response.json()["result" ]
         ticket_num = decodedResponse[0]
         ticket_info = decodedResponse[3]
-        #print(ticket_info)
 
         sel_info = {}
         sel_info[TI_STATUS] = ticket_info["status"]
@@ -38,9 +37,6 @@ def main():
         sel_info[TI_RESOLUTION] = ticket_info["resolution"]
 
         return sel_info
-
-    #ticket_info = get_ticket_status(23368)
-    #print(ticket_info)
 
     with open('RaisedTicketStatus.csv', 'w', newline='') as out_file:
         writer = csv.writer(out_file, delimiter=',')
