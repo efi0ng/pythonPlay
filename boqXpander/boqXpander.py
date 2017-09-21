@@ -58,7 +58,7 @@ def proc_kap(parts, xboq_out):
     if (len(parts) < 62):
         return
 
-    print(" Reduce height:: Offset side idx: {} | Amount: {} "
+    print("  Reduce height:: Offset side idx: {} | Amount: {} "
         .format(parts[61],parts[62]),
        file=xboq_out)
 
