@@ -48,14 +48,14 @@ def proc_kap(parts, xboq_out):
         .format(parts[TRUSS_MARKS], parts[57], parts[58]),
         file=xboq_out)
 
-    if (len(parts) < 60):
+    if (len(parts) < 61):
         return
 
     print("  Upper side: {} | Treatment: {}"
         .format(parts[59], parts[60]),
         file=xboq_out)
 
-    if (len(parts) < 62):
+    if (len(parts) < 63):
         return
 
     print("  Reduce height => Offset 4-5: {} | Offset 8-1: {}"
@@ -63,7 +63,7 @@ def proc_kap(parts, xboq_out):
        file=xboq_out)
 
 
-def process_line_parts(parts, xboq_out):
+def process_line_parts(parts, xboq_out, lineno):
     part_name_procs = {
         "VERSION" : proc_verbatim,
         "PRO_SIGN" : proc_verbatim,
@@ -71,6 +71,7 @@ def process_line_parts(parts, xboq_out):
         "KAP" : proc_kap,
     }
 
+    #TODO Check for error and report line number.
     if parts[0] in part_name_procs:
         part_name_procs[parts[0]](parts, xboq_out)
     else:
@@ -83,15 +84,17 @@ def xpand_boq(boq_file, out_file):
     with open(out_file, 'w',encoding='utf8') as xboq_out:
         with open(boq_file, 'r',encoding='latin_1') as boq_in:
             line = boq_in.readline()
+            lineno = 1
 
             while line:
                 parts = list(map(strip_str, line.split(":")))
                 if len(parts) > 0:
-                    process_line_parts(parts, xboq_out)
+                    process_line_parts(parts, xboq_out, lineno)
                 else:
                     print("",file=boq_out)
 
                 line = boq_in.readline()
+                ++lineno
 
 
 def main(boq_file, out_file):
