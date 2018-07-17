@@ -51,8 +51,15 @@ def proc_kap(parts, xboq_out):
     if (len(parts) < 61):
         return
 
-    print("  Upper side: {} | Treatment: {}"
-        .format(parts[59], parts[60]),
+    # Upper side help
+    upperSideHelp = "(n/a)"
+    if parts[59] == "1":
+        upperSideHelp = "(4-5)"
+    elif parts[59] == "2":
+        upperSideHelp = "(8-1)"
+
+    print("  Upper side: {} {} | Treatment: {}"
+        .format(parts[59], upperSideHelp, parts[60]),
         file=xboq_out)
 
     if (len(parts) < 63):
