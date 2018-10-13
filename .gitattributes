@@ -1,11 +1,7 @@
 *.pde text=auto
 
+*.py text eol=lf
 
-
-*.py text=auto
-
-
-
-*.xml text=auto
+*.xml text eol=lf
 *.zip binary
 *.7z binary
