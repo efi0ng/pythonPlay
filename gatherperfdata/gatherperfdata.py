@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import os
 import sys
 import os.path
 import json
@@ -21,7 +21,7 @@ Several more tests have been added since.
 
 _debug = False
 _output_file = None
-TEST_SUITE_LABEL = "tc-europmrtest2"
+TEST_SUITE_LABEL = "tc" + os.environ['COMPUTERNAME']
 
 # ---------------------------------------------------------
 '''
