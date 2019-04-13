@@ -4,8 +4,9 @@
 from os import walk
 from pathlib import Path  # https://docs.python.org/3/library/pathlib.html
 from typing import Optional
+import json
+
 # Path parts!
-# import json
 
 _ROOT_DIR = Path("N:/vr")
 _DESCRIPTOR_SUFFIX = ".desc"
@@ -22,10 +23,6 @@ class TimeStamp:
 class DeoVrCatalog:
     def __init__(self):
         self.scenes:[DeoVrScene] = []
-
-    def add_video(self, scene:str, video):
-        # TODO Implement this.
-        print("not implemented")
 
     def to_json(self):
         scene_json = []
@@ -64,7 +61,7 @@ class DeoVrVideo:
             }
         }
 
-    def get_index_json(self):
+    def get_index_json(self) -> object:
         """Return the deovr index entry json object"""
         result = {
             "title": self.json["title"],
@@ -74,7 +71,7 @@ class DeoVrVideo:
 
         return result
 
-    def get_video_json(self):
+    def get_video_json(self) -> object:
         return self.json
 
     def set_preview(self, preview_url):
@@ -104,7 +101,7 @@ class DeoVrScene:
         self.name = name
         self.videos = []
 
-    def get_json(self):
+    def get_json(self) -> object:
         """Return scenes json object given the tab contents"""
         # TODO Convert video list to json
 
@@ -117,7 +114,19 @@ class DeoVrScene:
         self.videos.append(video)
 
 
-class VrVideo:
+class VrDescLabels:
+    TITLE = "title"
+    SITE = "site"
+    VIDEO = "video"
+    PREVIEW = "preview"
+    SEEK = "seek"
+    DURATION = "duration"
+    GROUP = "group"
+    ACTORS = "actors"
+    TIME_STAMPS = "timeStamps"
+
+
+class VrVideoDesc:
     """VR Video for the index"""
     def __init__(self, descriptor: Path, title: str, group: str, video_url: str, thumb_url: str, duration: int=0):
         self.descriptor = descriptor
@@ -130,7 +139,7 @@ class VrVideo:
         self.duration = duration
         self.group = group
 
-    def get_deovr_json(self):
+    def get_deovr_json(self) -> object:
         """Produce json object that represents video description file"""
         deovr = DeoVrVideo(self.title, self.video_url, self.thumb_url)
         if self.preview_url:
@@ -144,13 +153,38 @@ class VrVideo:
 
         return deovr.get_video_json()
 
+    @staticmethod
+    def load(desc_path: Path) -> object:
+        file = None
+        vid_desc = None
+        try:
+            file = desc_path.open(mode="r", encoding="utf-8")
+            desc_json = json.load(file)
+            print(desc_json)
+
+            print(VrDescLabels.TITLE)
+            title = desc_json[VrDescLabels.TITLE]
+            video = desc_json[VrDescLabels.VIDEO]
+            preview = desc_json[VrDescLabels.PREVIEW]
+            seek = desc_json[VrDescLabels.SEEK]
+            duration_str = desc_json[VrDescLabels.DURATION]
+            group = desc_json[VrDescLabels.GROUP]
+            time_stamps = desc_json[VrDescLabels.TIME_STAMPS]
+
+        finally:
+            if file:
+                file.close()
+
+        return vid_desc
+
 
 def is_descriptor_file(filename: str):
     return filename.endswith(_DESCRIPTOR_SUFFIX)
 
 
 def add_video(desc_path: Path):
-    print(desc_path.with_suffix("").with_suffix(".jpg").relative_to(_ROOT_DIR).as_posix())
+    print("Processing {}".format(desc_path.relative_to(_ROOT_DIR).as_posix()))
+    VrVideoDesc.load(desc_path)
 
 
 def scan_for_videos():
