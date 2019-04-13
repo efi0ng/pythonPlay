@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# DeoVr doc: https://deovr.com/doc
 
 from os import walk
 from pathlib import Path  # https://docs.python.org/3/library/pathlib.html
@@ -7,7 +8,7 @@ from typing import Optional
 # import json
 
 _ROOT_DIR = Path("N:/vr")
-_DESCRIPTOR_SUFFIX = ".vid.json"
+_DESCRIPTOR_SUFFIX = ".desc"
 _VR_VIDEOS = []
 _BASE_URL = "http://192.168.0.35/vr"
 
@@ -63,7 +64,7 @@ class DeoVrVideo:
             }
         }
 
-    def index_json(self):
+    def get_index_json(self):
         """Return the deovr index entry json object"""
         result = {
             "title": self.json["title"],
@@ -73,13 +74,20 @@ class DeoVrVideo:
 
         return result
 
-    def add_preview(self, preview_url):
+    def get_video_json(self):
+        return self.json
+
+    def set_preview(self, preview_url):
         self.json["videoPreview"] = preview_url
 
-    def add_seek(self, seek_url):
+    def set_seek(self, seek_url):
         self.json["videoThumbnail"] = seek_url
 
-    def add_time_stamps(self, stamps):
+    def set_duration(self, duration):
+        if duration > 0:
+            self.json["videoLength"] = duration
+
+    def set_time_stamps(self, stamps):
         timestamps = []
 
         for stamp in stamps:
@@ -96,7 +104,7 @@ class DeoVrScene:
         self.name = name
         self.videos = []
 
-    def to_json(self):
+    def get_json(self):
         """Return scenes json object given the tab contents"""
         # TODO Convert video list to json
 
@@ -111,7 +119,7 @@ class DeoVrScene:
 
 class VrVideo:
     """VR Video for the index"""
-    def __init__(self, descriptor: Path, title: str, tab: str, video_url: str, thumb_url: str, duration: int):
+    def __init__(self, descriptor: Path, title: str, group: str, video_url: str, thumb_url: str, duration: int=0):
         self.descriptor = descriptor
         self.title = title
         self.video_url = video_url
@@ -120,15 +128,21 @@ class VrVideo:
         self.seek_url: Optional[str] = None
         self.bookmarks = []
         self.duration = duration
-        self.tab = tab
+        self.group = group
 
     def get_deovr_json(self):
         """Produce json object that represents video description file"""
         deovr = DeoVrVideo(self.title, self.video_url, self.thumb_url)
         if self.preview_url:
-            deovr.add_preview(self.preview_url);
+            deovr.set_preview(self.preview_url)
 
-        return deovr.json
+        if self.seek_url:
+            deovr.set_seek(self.seek_url)
+
+        if self.duration > 0:
+            deovr.set_duration(self.duration)
+
+        return deovr.get_video_json()
 
 
 def is_descriptor_file(filename: str):
