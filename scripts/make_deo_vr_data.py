@@ -8,7 +8,10 @@ import json
 
 # Path parts!
 
-_ROOT_DIR = Path("N:/vr")
+_ROOT_DIR_WIN = Path("N:/vr")
+_ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
+_ROOT_DIR = _ROOT_DIR_LINUX
+
 _DESCRIPTOR_SUFFIX = ".desc"
 _VR_VIDEOS = []
 _BASE_URL = "http://192.168.0.35/vr"
