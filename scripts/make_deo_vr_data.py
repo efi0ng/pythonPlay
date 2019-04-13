@@ -2,7 +2,7 @@
 
 from os import walk
 from pathlib import Path  # https://docs.python.org/3/library/pathlib.html
-from typing import Union
+from typing import Optional
 # Path parts!
 # import json
 
@@ -37,23 +37,9 @@ class DeoVrCatalog:
         return result
 
 
-class DeoVrScene:
-    def __init__(self, name: str):
-        self.name = name
-        self.videos = []
-
-    def to_json(self):
-        """Return scenes json object given the tab contents"""
-        # TODO Convert video list to json
-
-        return {
-                "name": self.name,
-                "list": []
-        }
-
-
 class DeoVrVideo:
-    def __init__(self, title: str, video_url: str, thumb_url: str):
+    def __init__(self, title: str, video_url: str, thumb_url: str, json_url: str):
+        self.json_url = json_url
         self.json = {
             "encodings": [{
                 "name": "h264",
@@ -77,12 +63,12 @@ class DeoVrVideo:
             }
         }
 
-    def video_index_json(self, video_json_url:str):
+    def index_json(self):
         """Return the deovr index entry json object"""
         result = {
             "title": self.json["title"],
             "thumbnailUrl": self.json["thumbnailUrl"],
-            "video_url": video_json_url
+            "video_url": self.json_url
         }
 
         return result
@@ -105,6 +91,24 @@ class DeoVrVideo:
         self.json["timeStamps"] = timestamps
 
 
+class DeoVrScene:
+    def __init__(self, name: str):
+        self.name = name
+        self.videos = []
+
+    def to_json(self):
+        """Return scenes json object given the tab contents"""
+        # TODO Convert video list to json
+
+        return {
+                "name": self.name,
+                "list": []
+        }
+
+    def add_video(self, video: DeoVrVideo):
+        self.videos.append(video)
+
+
 class VrVideo:
     """VR Video for the index"""
     def __init__(self, descriptor: Path, title: str, tab: str, video_url: str, thumb_url: str, duration: int):
@@ -112,7 +116,8 @@ class VrVideo:
         self.title = title
         self.video_url = video_url
         self.thumb_url = thumb_url
-        self.preview_url: Union[str, None] = None
+        self.preview_url: Optional[str] = None
+        self.seek_url: Optional[str] = None
         self.bookmarks = []
         self.duration = duration
         self.tab = tab
