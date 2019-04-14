@@ -7,7 +7,12 @@ from typing import Optional, Any
 import json
 import re
 
+
 _DESCRIPTOR_SUFFIX = ".desc"
+_ROOT_DIR_WIN = Path("N:/vr")
+_ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
+_BASE_URL: str = "http://192.168.0.35/vr/"
+
 
 def urljoin(*args):
     """
@@ -380,7 +385,7 @@ class VideoLibrary:
 
     @staticmethod
     def is_descriptor_file(filename: str):
-        return filename.endswith(VideoLibrary._DESCRIPTOR_SUFFIX)
+        return filename.endswith(_DESCRIPTOR_SUFFIX)
 
     def scan_for_videos(self, verbose: bool = False):
         for root, dirs, files in os.walk(str(self.root_dir)):
@@ -434,10 +439,6 @@ class VideoLibrary:
                 self.deovr_write_vid_file(video)
 
 
-_ROOT_DIR_WIN = Path("N:/vr")
-_ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
-_BASE_URL: str = "http://192.168.0.35/vr/"
-
 def index_lib_for_deovr(root: str = None, base_url: str = _BASE_URL, verbose: bool = False):
     if not root:
         root_dir = _ROOT_DIR_LINUX if os.name == "posix" else _ROOT_DIR_WIN
@@ -456,6 +457,7 @@ def index_lib_for_deovr(root: str = None, base_url: str = _BASE_URL, verbose: bo
     print("Writing DEOVR files")
     video_lib.deovr_write_files(verbose)
 
+
 def write_template_desc(video_file: str):
     video_path = Path(video_file)
     if not video_path.exists():
@@ -466,7 +468,7 @@ def write_template_desc(video_file: str):
         print("Error. Desc file already exists: {}".format(desc_path))
 
     json_str = r'''{
-    "title": {%TITLE%},
+    "title": "{%TITLE%}",
     "site": "Unknown",
     "duration": "00:00:00",
     "resolution": 1920,
@@ -485,6 +487,7 @@ def write_template_desc(video_file: str):
         fp.write(json_str)
     finally:
         fp.close()
+
 
 if __name__ == "__main__":
     import sys
