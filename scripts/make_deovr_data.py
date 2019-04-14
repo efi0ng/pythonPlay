@@ -32,9 +32,8 @@ class TimeCode:
         return h*3600 + m*60 + s
 
     @staticmethod
-    def text_to_duration(h: str, m: str, s: str=None):
-        seconds = int(s) if s is not None else 0
-        return TimeCode.ints_to_duration(int(h),int(m),seconds)
+    def text_to_duration(h: str, m: str, s: str):
+        return TimeCode.ints_to_duration(int(h), int(m), int(s))
 
     @staticmethod
     def parse_hhmmss(time_string):
@@ -43,10 +42,10 @@ class TimeCode:
         return TimeCode.text_to_duration(h, m, s)
 
     @staticmethod
-    def parse_hhmm(time_string):
+    def parse_mmss(time_string):
         """Must pass in a valid 00:00 value"""
-        (h, m) = time_string.split(":")
-        return TimeCode.text_to_duration(h, m)
+        (m, s) = time_string.split(":")
+        return TimeCode.text_to_duration("0", m, s)
 
     @staticmethod
     def parse_0h0m0s(time_string):
@@ -85,13 +84,16 @@ class TimeCode:
 
 TimeCode._REGEX = [
     (r"\d\d:\d\d:\d\d", TimeCode.parse_hhmmss),
-    (r"\d\d:\d\d", TimeCode.parse_hhmm),
+    (r"\d\d:\d\d", TimeCode.parse_mmss),
     (r"\d\d?h\d\d?m\d\d?s", TimeCode.parse_0h0m0s),
     (r"\d+", TimeCode.parse_seconds)]
 
 
 class DeoVrVideo:
     DURATION = "videoLength"
+    RESOLUTION = "resolution"
+    ENCODINGS = "encodings"
+    VIDEO_SOURCES = "videoSources"
 
     def __init__(self, title: str, video_url: str, thumb_url: str, json_url: str, json_path: Path):
         self.json_url = json_url
@@ -147,6 +149,11 @@ class DeoVrVideo:
     def set_duration(self, duration):
         if duration > 0:
             self.json[DeoVrVideo.DURATION] = duration
+
+    def set_resolution(self, resolution):
+        if resolution > 0:
+            h264_encoding = self.json[DeoVrVideo.ENCODINGS][0]
+            h264_encoding[DeoVrVideo.VIDEO_SOURCES][0][DeoVrVideo.RESOLUTION] = resolution
 
     def set_time_stamps(self, stamps):
         timestamps = []
@@ -213,6 +220,7 @@ class VrDescLabels:
     DURATION = "duration"
     GROUP = "group"
     ACTORS = "actors"
+    RESOLUTION = "resolution"
     TIME_STAMPS = "timeStamps"
     TS_TIMECODE = "ts"
     TS_NAME = "name"
@@ -228,7 +236,8 @@ class VrVideoDesc:
     def __init__(self, descriptor: Path,
                  parent_path: Path, parent_url: str,
                  title: str, group: str,
-                 video_url: str, thumb_url: str, duration: int = 0):
+                 video_url: str, thumb_url: str,
+                 duration: int = 0, resolution: int = 0):
         self.descriptor: Path = descriptor
         self._parent_path: Path = parent_path
         self._parent_url: str = parent_url
@@ -239,6 +248,7 @@ class VrVideoDesc:
         self.seek_url: Optional[str] = None
         self.time_stamps: Any = None
         self.duration: int = duration
+        self.resolution: int = resolution
         self._group: str = group
 
     @property
@@ -267,6 +277,9 @@ class VrVideoDesc:
 
         if self.duration > 0:
             deovr.set_duration(self.duration)
+
+        if self.resolution > 0:
+            deovr.set_resolution(self.resolution)
 
         if self.time_stamps:
             deovr.set_time_stamps(self.time_stamps)
@@ -321,7 +334,10 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> VrVideoDesc:
             if TimeCode.is_valid(duration_str):
                 vid_desc.duration = TimeCode.duration(duration_str)
             else:
-                print("{} has invalid time code:{}".format(desc_path,duration_str))
+                print("{} has invalid time code:{}".format(desc_path, duration_str))
+
+        if VrDescLabels.RESOLUTION in desc_json:
+            vid_desc.resolution = desc_json[VrDescLabels.RESOLUTION]
 
         # DIAGNOSTIC print(json.dumps(vid_desc.get_deovr_json(), indent=3))
 
