@@ -7,6 +7,7 @@ from typing import Optional, Any
 import json
 import re
 
+_DESCRIPTOR_SUFFIX = ".desc"
 
 def urljoin(*args):
     """
@@ -359,7 +360,6 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
 class VideoLibrary:
     """Encapsulates the video library on my machine.
     Provides services to output static references for deovr."""
-    _DESCRIPTOR_SUFFIX = ".desc"
 
     def __init__(self, root_dir: Path, base_url: str):
         self.video_dict = {}
@@ -434,26 +434,62 @@ class VideoLibrary:
                 self.deovr_write_vid_file(video)
 
 
-def main():
-    _ROOT_DIR_WIN = Path("N:/vr")
-    _ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
+_ROOT_DIR_WIN = Path("N:/vr")
+_ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
+_BASE_URL: str = "http://192.168.0.35/vr/"
 
-    _ROOT_DIR = _ROOT_DIR_LINUX if os.name == "posix" else _ROOT_DIR_WIN
+def index_lib_for_deovr(root: str = None, base_url: str = _BASE_URL, verbose: bool = False):
+    if not root:
+        root_dir = _ROOT_DIR_LINUX if os.name == "posix" else _ROOT_DIR_WIN
+    else:
+        root_dir = Path(root)
 
-    _BASE_URL: str = "http://192.168.0.35/vr/"
-
-    if not _ROOT_DIR.exists():
-        print("Folder '{}' does not exist.".format(_ROOT_DIR))
+    if not root_dir.exists():
+        print("Folder '{}' does not exist.".format(root_dir))
         return
 
-    video_lib = VideoLibrary(_ROOT_DIR, _BASE_URL)
+    video_lib = VideoLibrary(root_dir, base_url)
 
-    print("Scanning directories starting at {}".format(_ROOT_DIR))
-    video_lib.scan_for_videos(verbose=True)
+    print("Scanning directories starting at {}".format(root_dir))
+    video_lib.scan_for_videos(verbose)
 
     print("Writing DEOVR files")
-    video_lib.deovr_write_files(verbose=True)
+    video_lib.deovr_write_files(verbose)
 
+def write_template_desc(video_file: str):
+    video_path = Path(video_file)
+    if not video_path.exists():
+        print("File not found: {}".format(video_path))
+
+    desc_path = video_path.with_suffix(_DESCRIPTOR_SUFFIX)
+    if desc_path.exists():
+        print("Error. Desc file already exists: {}".format(desc_path))
+
+    json_str = r'''{
+    "title": {%TITLE%},
+    "site": "Unknown",
+    "duration": "00:00:00",
+    "resolution": 1920,
+    "group": "Inbox",
+    "actors": ["Unknown"],
+    "timeStamps": [
+        {"ts":"00:10:00", "name":"?"},
+        {"ts":"00:20:00", "name":"?"}
+    ]
+}'''
+
+    json_str = json_str.replace("{%TITLE%}",video_path.name)
+
+    fp = desc_path.open(mode="w")
+    try:
+        fp.write(json_str)
+    finally:
+        fp.close()
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) < 2:
+        index_lib_for_deovr(verbose=True)
+    elif sys.argv[1].endswith("mp4"):
+        write_template_desc(sys.argv[1])
+
