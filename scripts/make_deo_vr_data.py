@@ -3,18 +3,18 @@
 
 from os import walk
 from pathlib import Path  # https://docs.python.org/3/library/pathlib.html
-from typing import Optional
+from typing import Optional, Any
 import json
 
 # Path parts!
 
 _ROOT_DIR_WIN = Path("N:/vr")
 _ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
-_ROOT_DIR = _ROOT_DIR_LINUX
+_ROOT_DIR = _ROOT_DIR_WIN
 
 _DESCRIPTOR_SUFFIX = ".desc"
 _VR_VIDEOS = []
-_BASE_URL = "http://192.168.0.35/vr"
+_BASE_URL = "http://192.168.0.35/vr/"
 
 
 class TimeStamp:
@@ -25,7 +25,7 @@ class TimeStamp:
 
 class DeoVrCatalog:
     def __init__(self):
-        self.scenes:[DeoVrScene] = []
+        self.scenes: [DeoVrScene] = []
 
     def to_json(self):
         scene_json = []
@@ -88,7 +88,7 @@ class DeoVrVideo:
             self.json["videoLength"] = duration
 
     def set_time_stamps(self, stamps):
-        timestamps = []
+        timestamps = stamps
 
         for stamp in stamps:
             timestamps.append({
@@ -97,6 +97,9 @@ class DeoVrVideo:
             })
 
         self.json["timeStamps"] = timestamps
+
+    def set_time_stamps_raw(self, json_stamps):
+        self.json["timeStamps"] = json_stamps
 
 
 class DeoVrScene:
@@ -131,20 +134,26 @@ class VrDescLabels:
 
 class VrVideoDesc:
     """VR Video for the index"""
-    def __init__(self, descriptor: Path, title: str, group: str, video_url: str, thumb_url: str, duration: int=0):
-        self.descriptor = descriptor
-        self.title = title
-        self.video_url = video_url
-        self.thumb_url = thumb_url
+    THUMB_EXT = ".jpg"
+    SEEK_SUFFIX = "_seek.mp4"
+    PREVIEW_SUFFIX = "_preview.mp4"
+    DEOVR_EXT = ".deovr"
+
+    def __init__(self, descriptor: Path, title: str, group: str, video_url: str, thumb_url: str, deovr_url: str, duration: int=0):
+        self.descriptor: Path = descriptor
+        self.title: str = title
+        self.video_url: str = video_url
+        self.thumb_url: str = thumb_url
+        self.deovr_url: str = deovr_url
         self.preview_url: Optional[str] = None
         self.seek_url: Optional[str] = None
-        self.bookmarks = []
-        self.duration = duration
-        self.group = group
+        self.time_stamps: Any = None
+        self.duration: int = duration
+        self.group: str = group
 
     def get_deovr_json(self) -> object:
         """Produce json object that represents video description file"""
-        deovr = DeoVrVideo(self.title, self.video_url, self.thumb_url)
+        deovr = DeoVrVideo(self.title, self.video_url, self.thumb_url, self.deovr_url)
         if self.preview_url:
             deovr.set_preview(self.preview_url)
 
@@ -154,6 +163,10 @@ class VrVideoDesc:
         if self.duration > 0:
             deovr.set_duration(self.duration)
 
+        if self.time_stamps:
+            # todo: parse timestamps for timecodes.
+            deovr.set_time_stamps_raw(self.time_stamps)
+
         return deovr.get_video_json()
 
     @staticmethod
@@ -162,17 +175,40 @@ class VrVideoDesc:
         vid_desc = None
         try:
             file = desc_path.open(mode="r", encoding="utf-8")
-            desc_json = json.load(file)
-            print(desc_json)
+            relative_path = desc_path.relative_to(_ROOT_DIR)
+            desc_stem = relative_path.stem
+            thumb_file = relative_path.with_suffix(VrVideoDesc.THUMB_EXT)
+            thumb_url = _BASE_URL + str(thumb_file.as_posix())
+            deovr_file = relative_path.with_suffix(VrVideoDesc.DEOVR_EXT)
+            deovr_url = _BASE_URL + str(deovr_file.as_posix())
 
-            print(VrDescLabels.TITLE)
+            desc_json = json.load(file)
             title = desc_json[VrDescLabels.TITLE]
             video = desc_json[VrDescLabels.VIDEO]
-            preview = desc_json[VrDescLabels.PREVIEW]
-            seek = desc_json[VrDescLabels.SEEK]
-            duration_str = desc_json[VrDescLabels.DURATION]
             group = desc_json[VrDescLabels.GROUP]
-            time_stamps = desc_json[VrDescLabels.TIME_STAMPS]
+
+            video_url = _BASE_URL + relative_path.with_name(video).as_posix()
+
+            vid_desc = VrVideoDesc(desc_path, title, group, video_url, thumb_url, deovr_url)
+
+            preview_file = desc_stem + VrVideoDesc.PREVIEW_SUFFIX
+            if desc_path.with_name(preview_file).exists():
+                preview_url = _BASE_URL + str(relative_path.with_name(preview_file).as_posix())
+                vid_desc.preview_url = preview_url
+
+            seek_file = desc_stem + VrVideoDesc.SEEK_SUFFIX
+            if desc_path.with_name(seek_file).exists():
+                seek_url = _BASE_URL + str(relative_path.with_name(seek_file).as_posix())
+                vid_desc.seek_url = seek_url
+
+            if VrDescLabels.TIME_STAMPS in desc_json:
+                vid_desc.time_stamps = desc_json[VrDescLabels.TIME_STAMPS]
+
+            if VrDescLabels.DURATION in desc_json:
+                duration_str = desc_json[VrDescLabels.DURATION]
+
+            print(json.dumps(vid_desc.get_deovr_json(), indent=3))
+
 
         finally:
             if file:
