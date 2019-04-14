@@ -5,6 +5,7 @@ import os
 from pathlib import Path  # https://docs.python.org/3/library/pathlib.html
 from typing import Optional, Any
 import json
+import re
 
 # Path parts!
 
@@ -20,6 +21,76 @@ class TimeStamp:
     def __init__(self, seconds: int, name: str):
         self.seconds = seconds
         self.name = name
+
+
+class TimeCode:
+    @staticmethod
+    def ints_to_duration(h: int, m: int, s: int):
+        return h*3600 + m*60 + s
+
+    @staticmethod
+    def text_to_duration(h: str, m: str, s: str=None):
+        seconds = int(s) if s is not None else 0
+        return TimeCode.ints_to_duration(int(h),int(m),seconds)
+
+    @staticmethod
+    def parse_hhmmss(time_string):
+        """Must pass in a valid 00:00:00 value"""
+        (h, m, s) = time_string.split(":")
+        return TimeCode.text_to_duration(h, m, s)
+
+    @staticmethod
+    def parse_hhmm(time_string):
+        """Must pass in a valid 00:00 value"""
+        (h, m) = time_string.split(":")
+        return TimeCode.text_to_duration(h, m)
+
+    @staticmethod
+    def parse_0h0m0s(time_string):
+        """Must pass in a valid 0h0m0s value"""
+        time_str = time_string.strip("s")
+        (h, x) = time_str.split("h")
+        (m, s) = x.split("m")
+        return TimeCode.text_to_duration(h, m, s)
+
+    @staticmethod
+    def parse_seconds(time_string):
+        """Must pass valid ##### value."""
+        return int(time_string)
+
+    _REGEX = [
+        (r"\d\d:\d\d:\d\d", parse_hhmmss),
+        (r"\d\d:\d\d", parse_hhmm),
+        (r"\d\d?h\d\d?m\d\d?s", parse_0h0m0s),
+        (r"\d+", parse_seconds)
+        ]
+
+    def is_valid_time_string(self, time: str):
+        """Allow either 00:00:00 or 00:00 or 0h0m0s or 0 (seconds)"""
+        for regex in self._REGEX:
+            if re.fullmatch(regex[0], time):
+                return True
+
+        return False
+
+    def __init__(self, time_string: str):
+        self.time_string = time_string
+
+    @property
+    def text(self):
+        return self.time_string
+
+    @property
+    def is_valid(self):
+        return self.is_valid_time_string(self.time_string)
+
+    @property
+    def duration(self):
+        for regex in self._REGEX:
+            if re.fullmatch(regex[0], self.time_string):
+                return regex[1](self.time_string)
+
+        return False
 
 
 class DeoVrCatalog:
@@ -174,7 +245,6 @@ class VrVideoDesc:
     @staticmethod
     def load(desc_path: Path) -> object:
         file = None
-        vid_desc = None
         try:
             file = desc_path.open(mode="r", encoding="utf-8")
             relative_path = desc_path.relative_to(_ROOT_DIR)
@@ -208,9 +278,9 @@ class VrVideoDesc:
 
             if VrDescLabels.DURATION in desc_json:
                 duration_str = desc_json[VrDescLabels.DURATION]
+                # TODO process duration strings
 
-            print(json.dumps(vid_desc.get_deovr_json(), indent=3))
-
+            # DIAGNOSTIC print(json.dumps(vid_desc.get_deovr_json(), indent=3))
 
         finally:
             if file:
@@ -255,6 +325,7 @@ class VideoLibrary:
         # TODO
         print("Writing deovr index file at {}: Not implemented".format(self.root_dir))
         print("Writing deovr files: Not implemented")
+        print(self.video_dict)
 
 
 def main():
