@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # DeoVr doc: https://deovr.com/doc
 
-from os import walk
+import os
 from pathlib import Path  # https://docs.python.org/3/library/pathlib.html
 from typing import Optional, Any
 import json
@@ -10,7 +10,8 @@ import json
 
 _ROOT_DIR_WIN = Path("N:/vr")
 _ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
-_ROOT_DIR = _ROOT_DIR_WIN
+
+_ROOT_DIR = _ROOT_DIR_LINUX if os.name == "posix" else _ROOT_DIR_WIN
 
 _DESCRIPTOR_SUFFIX = ".desc"
 _VR_VIDEOS = []
@@ -230,7 +231,7 @@ def scan_for_videos():
     print("Scanning directories starting at {}".format(_ROOT_DIR))
     # vrCatalog = DeoVrCatalog()
 
-    for root, dirs, files in walk(_ROOT_DIR):
+    for root, dirs, files in os.walk(_ROOT_DIR):
         descriptors = filter(is_descriptor_file, files)
         for desc in descriptors:
             add_video(Path(root, desc))
