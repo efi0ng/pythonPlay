@@ -232,6 +232,7 @@ class VrVideoDesc:
     SEEK_SUFFIX = "_seek.mp4"
     PREVIEW_SUFFIX = "_preview.mp4"
     DEOVR_EXT = ".deovr"
+    VIDEO_SUFFIX = ".mp4"
 
     def __init__(self, descriptor: Path,
                  parent_path: Path, parent_url: str,
@@ -287,7 +288,7 @@ class VrVideoDesc:
         return deovr
 
 
-def load_video(desc_path: Path, root_dir: Path, base_url: str) -> VrVideoDesc:
+def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVideoDesc]:
     def parse_time_stamps(ts_json):
         time_stamps = []
         for stamp in ts_json:
@@ -309,19 +310,28 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> VrVideoDesc:
 
         desc_json = json.load(file)
         title = desc_json[VrDescLabels.TITLE]
-        video = desc_json[VrDescLabels.VIDEO]
         group = desc_json[VrDescLabels.GROUP]
+
+        if VrDescLabels.VIDEO not in desc_json:
+            video = desc_path.stem + VrVideoDesc.VIDEO_SUFFIX
+        else:
+            video = desc_json[VrDescLabels.VIDEO]
+
+        video_path = desc_path.with_name(video)
+        if not video_path.exists():
+            print("Video file not found: {}".format(video_path))
+            return None
 
         video_url = urljoin(base_url, relative_path.with_name(video).as_posix())
 
         vid_desc = VrVideoDesc(desc_path, parent_path, parent_url, title, group, video_url, thumb_url)
 
-        preview_file = vid_desc.name_stem + VrVideoDesc.PREVIEW_SUFFIX
+        preview_file = desc_path.stem + VrVideoDesc.PREVIEW_SUFFIX
         if desc_path.with_name(preview_file).exists():
             preview_url = urljoin(base_url, relative_path.with_name(preview_file).as_posix())
             vid_desc.preview_url = str(preview_url)
 
-        seek_file = vid_desc.name_stem + VrVideoDesc.SEEK_SUFFIX
+        seek_file = desc_path.stem + VrVideoDesc.SEEK_SUFFIX
         if desc_path.with_name(seek_file).exists():
             seek_url = urljoin(base_url, relative_path.with_name(seek_file).as_posix())
             vid_desc.seek_url = str(seek_url)
@@ -361,12 +371,12 @@ class VideoLibrary:
             print("-> {}".format(desc_path.relative_to(self.root_dir).as_posix()))
 
         video_desc = load_video(desc_path, self.root_dir, self.base_url)
-
-        group = video_desc.group
-        if group not in self.video_dict:
-            self.video_dict[group] = [video_desc]
-        else:
-            self.video_dict[group].append(video_desc)
+        if video_desc:
+            group = video_desc.group
+            if group not in self.video_dict:
+                self.video_dict[group] = [video_desc]
+            else:
+                self.video_dict[group].append(video_desc)
 
     @staticmethod
     def is_descriptor_file(filename: str):
