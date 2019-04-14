@@ -24,6 +24,8 @@ class TimeStamp:
 
 
 class TimeCode:
+    _REGEX = []
+
     @staticmethod
     def ints_to_duration(h: int, m: int, s: int):
         return h*3600 + m*60 + s
@@ -58,13 +60,6 @@ class TimeCode:
         """Must pass valid ##### value."""
         return int(time_string)
 
-    _REGEX = [
-        (r"\d\d:\d\d:\d\d", parse_hhmmss),
-        (r"\d\d:\d\d", parse_hhmm),
-        (r"\d\d?h\d\d?m\d\d?s", parse_0h0m0s),
-        (r"\d+", parse_seconds)
-        ]
-
     @staticmethod
     def is_valid(time: str):
         """Allow either 00:00:00 or 00:00 or 0h0m0s or 0 (seconds)"""
@@ -81,6 +76,13 @@ class TimeCode:
                 return regex[1](time)
 
         return False
+
+
+TimeCode._REGEX = [
+    (r"\d\d:\d\d:\d\d", TimeCode.parse_hhmmss),
+    (r"\d\d:\d\d", TimeCode.parse_hhmm),
+    (r"\d\d?h\d\d?m\d\d?s", TimeCode.parse_0h0m0s),
+    (r"\d+", TimeCode.parse_seconds)]
 
 
 class DeoVrCatalog:
@@ -268,7 +270,10 @@ class VrVideoDesc:
 
             if VrDescLabels.DURATION in desc_json:
                 duration_str = desc_json[VrDescLabels.DURATION]
-                # TODO process duration strings
+                if TimeCode.is_valid(duration_str):
+                    vid_desc.duration = TimeCode.duration(duration_str)
+                else:
+                    print("{} has invalid time code:{}".format(desc_path,duration_str))
 
             # DIAGNOSTIC print(json.dumps(vid_desc.get_deovr_json(), indent=3))
 
