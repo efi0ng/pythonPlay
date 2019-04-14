@@ -65,30 +65,20 @@ class TimeCode:
         (r"\d+", parse_seconds)
         ]
 
-    def is_valid_time_string(self, time: str):
+    @staticmethod
+    def is_valid(time: str):
         """Allow either 00:00:00 or 00:00 or 0h0m0s or 0 (seconds)"""
-        for regex in self._REGEX:
+        for regex in TimeCode._REGEX:
             if re.fullmatch(regex[0], time):
                 return True
 
         return False
 
-    def __init__(self, time_string: str):
-        self.time_string = time_string
-
-    @property
-    def text(self):
-        return self.time_string
-
-    @property
-    def is_valid(self):
-        return self.is_valid_time_string(self.time_string)
-
-    @property
-    def duration(self):
-        for regex in self._REGEX:
-            if re.fullmatch(regex[0], self.time_string):
-                return regex[1](self.time_string)
+    @staticmethod
+    def duration(time: str):
+        for regex in TimeCode._REGEX:
+            if re.fullmatch(regex[0], time):
+                return regex[1](time)
 
         return False
 
