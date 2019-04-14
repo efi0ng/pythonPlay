@@ -13,8 +13,6 @@ _ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
 
 _ROOT_DIR = _ROOT_DIR_LINUX if os.name == "posix" else _ROOT_DIR_WIN
 
-_DESCRIPTOR_SUFFIX = ".desc"
-_VR_VIDEOS = []
 _BASE_URL = "http://192.168.0.35/vr/"
 
 
@@ -150,7 +148,10 @@ class VrVideoDesc:
         self.seek_url: Optional[str] = None
         self.time_stamps: Any = None
         self.duration: int = duration
-        self.group: str = group
+        self._group: str = group
+
+    @property
+    def group(self): return self._group
 
     def get_deovr_json(self) -> object:
         """Produce json object that represents video description file"""
@@ -218,23 +219,42 @@ class VrVideoDesc:
         return vid_desc
 
 
-def is_descriptor_file(filename: str):
-    return filename.endswith(_DESCRIPTOR_SUFFIX)
+class VideoLibrary:
+    """Encapsulates the video library on my machine.
+    Provides services to output static references for deovr."""
+    _DESCRIPTOR_SUFFIX = ".desc"
 
+    def __init__(self, root_dir: Path):
+        self.video_dict = {}
+        self.root_dir: Path = root_dir
 
-def add_video(desc_path: Path):
-    print("Processing {}".format(desc_path.relative_to(_ROOT_DIR).as_posix()))
-    VrVideoDesc.load(desc_path)
+    def add_video(self, desc_path: Path):
+        print("Processing {}".format(desc_path.relative_to(self.root_dir).as_posix()))
+        video_desc = VrVideoDesc.load(desc_path)
 
+        group = video_desc.group
+        if group not in self.video_dict:
+            self.video_dict[group] = [video_desc]
+        else:
+            self.video_dict[group].append(video_desc)
 
-def scan_for_videos():
-    print("Scanning directories starting at {}".format(_ROOT_DIR))
-    # vrCatalog = DeoVrCatalog()
+    @staticmethod
+    def is_descriptor_file(filename: str):
+        return filename.endswith(VideoLibrary._DESCRIPTOR_SUFFIX)
 
-    for root, dirs, files in os.walk(_ROOT_DIR):
-        descriptors = filter(is_descriptor_file, files)
-        for desc in descriptors:
-            add_video(Path(root, desc))
+    def scan_for_videos(self):
+        print("Scanning directories starting at {}".format(self.root_dir))
+        # vrCatalog = DeoVrCatalog()
+
+        for root, dirs, files in os.walk(self.root_dir):
+            descriptors = filter(VideoLibrary.is_descriptor_file, files)
+            for desc in descriptors:
+                self.add_video(Path(root, desc))
+
+    def deovr_write_files(self):
+        # TODO
+        print("Writing deovr index file at {}: Not implemented".format(self.root_dir))
+        print("Writing deovr files: Not implemented")
 
 
 def main():
@@ -242,7 +262,9 @@ def main():
         print("Folder '{}' does not exist.".format(_ROOT_DIR))
         return
 
-    scan_for_videos()
+    video_lib = VideoLibrary(_ROOT_DIR)
+    video_lib.scan_for_videos()
+    video_lib.deovr_write_files()
 
 
 if __name__ == "__main__":
