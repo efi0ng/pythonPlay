@@ -339,8 +339,6 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> VrVideoDesc:
         if VrDescLabels.RESOLUTION in desc_json:
             vid_desc.resolution = desc_json[VrDescLabels.RESOLUTION]
 
-        # DIAGNOSTIC print(json.dumps(vid_desc.get_deovr_json(), indent=3))
-
     finally:
         if file:
             file.close()
@@ -358,8 +356,10 @@ class VideoLibrary:
         self.root_dir: Path = root_dir
         self.base_url: str = base_url
 
-    def add_video(self, desc_path: Path):
-        print("Processing {}".format(desc_path.relative_to(self.root_dir).as_posix()))
+    def add_video(self, desc_path: Path, verbose: bool = False):
+        if verbose:
+            print("-> {}".format(desc_path.relative_to(self.root_dir).as_posix()))
+
         video_desc = load_video(desc_path, self.root_dir, self.base_url)
 
         group = video_desc.group
@@ -372,13 +372,11 @@ class VideoLibrary:
     def is_descriptor_file(filename: str):
         return filename.endswith(VideoLibrary._DESCRIPTOR_SUFFIX)
 
-    def scan_for_videos(self):
-        print("Scanning directories starting at {}".format(self.root_dir))
-
+    def scan_for_videos(self, verbose: bool = False):
         for root, dirs, files in os.walk(str(self.root_dir)):
             descriptors = filter(VideoLibrary.is_descriptor_file, files)
             for desc in descriptors:
-                self.add_video(Path(root, desc))
+                self.add_video(Path(root, desc), verbose)
 
     def deovr_construct_catalog(self) -> DeoVrCatalog:
         deovr_cat = DeoVrCatalog()
@@ -403,21 +401,23 @@ class VideoLibrary:
         finally:
             fp.close()
 
-    def deovr_write_files(self):
+    def deovr_write_files(self, verbose: bool = False):
         _DEO_CATALOG_FILENAME = "deovr"
         # convert library to DeoVrScene hierarchy
         deovr_cat = self.deovr_construct_catalog()
 
-        print("Writing deovr index file at {}".format(self.root_dir))
-
         deovr_file = self.root_dir / _DEO_CATALOG_FILENAME
+        if verbose:
+            print("Writing deovr index file at {}".format(deovr_file))
+
         fp = deovr_file.open(mode="w")
         try:
             json.dump(deovr_cat.to_json(), fp, indent=2)
         finally:
             fp.close()
 
-        print("Writing deovr files")
+        if verbose:
+            print("Writing deovr video files")
 
         for scene in deovr_cat.scenes:
             for video in scene.videos:
@@ -437,8 +437,12 @@ def main():
         return
 
     video_lib = VideoLibrary(_ROOT_DIR, _BASE_URL)
-    video_lib.scan_for_videos()
-    video_lib.deovr_write_files()
+
+    print("Scanning directories starting at {}".format(_ROOT_DIR))
+    video_lib.scan_for_videos(verbose=True)
+
+    print("Writing DEOVR files")
+    video_lib.deovr_write_files(verbose=True)
 
 
 if __name__ == "__main__":
