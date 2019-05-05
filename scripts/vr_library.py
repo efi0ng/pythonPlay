@@ -11,7 +11,7 @@ import re
 _DESCRIPTOR_SUFFIX = ".desc"
 _ROOT_DIR_WIN = Path("N:/vr")
 _ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
-_BASE_URL: str = "http://192.168.0.35/vr/"
+_BASE_URL: str = "http://192.168.0.2/vr/"
 
 
 def urljoin(*args):
@@ -294,6 +294,12 @@ class VrVideoDesc:
         return deovr
 
 
+def calc_group_from_relative_path(rel_path: Path):
+    """Decide group from first dir in the relative path"""
+    group_name = rel_path.parts[0];
+    return group_name.lower().capitalize()
+
+
 def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVideoDesc]:
     def parse_time_stamps(ts_json):
         time_stamps = []
@@ -317,6 +323,8 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
         desc_json = json.load(file)
         title = desc_json[VrDescLabels.TITLE]
         group = desc_json[VrDescLabels.GROUP]
+        if group == "":
+            group = calc_group_from_relative_path(relative_path)
 
         if VrDescLabels.VIDEO not in desc_json:
             video = desc_path.stem + VrVideoDesc.VIDEO_SUFFIX
@@ -472,11 +480,11 @@ def write_template_desc(video_file: str):
     "site": "Unknown",
     "duration": "00:00:00",
     "resolution": 1920,
-    "group": "Inbox",
+    "group": "",
     "actors": ["Unknown"],
     "timeStamps": [
-        {"ts":"00:10:00", "name":"?"},
-        {"ts":"00:20:00", "name":"?"}
+        {"ts":"00:10:00", "name":""},
+        {"ts":"00:20:00", "name":""}
     ]
 }'''
 
@@ -493,6 +501,6 @@ if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:
         index_lib_for_deovr(verbose=True)
-    elif sys.argv[1].endswith("mp4"):
+    elif sys.argv[1].endswith("mp4") or sys.argv[1].endswith("jpg"):
         write_template_desc(sys.argv[1])
 
