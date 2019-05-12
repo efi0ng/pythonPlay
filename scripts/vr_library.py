@@ -69,6 +69,9 @@ class TimeCode:
     @staticmethod
     def is_valid(time: str):
         """Allow either 00:00:00 or 00:00 or 0h0m0s or 0 (seconds)"""
+        if type(time) is int:
+            return True
+
         for regex in TimeCode._REGEX:
             if re.fullmatch(regex[0], time):
                 return True
@@ -85,7 +88,7 @@ class TimeCode:
             if re.fullmatch(regex[0], time):
                 return regex[1](time)
 
-        return False
+        raise Exception('Invalid timecode format: "{}"'.format(time))
 
 
 TimeCode._REGEX = [
@@ -304,8 +307,13 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
     def parse_time_stamps(ts_json):
         time_stamps = []
         for stamp in ts_json:
+            time_code = stamp[VrDescLabels.TS_TIMECODE]
+            if not TimeCode.is_valid(time_code):
+                print("Invalid timecode ignored: {}".format(time_code))
+                continue
+
             name = stamp[VrDescLabels.TS_NAME]
-            duration = TimeCode.duration(stamp[VrDescLabels.TS_TIMECODE])
+            duration = TimeCode.duration(time_code)
             time_stamps.append(TimeStamp(name, duration))
 
         return time_stamps
@@ -470,10 +478,12 @@ def write_template_desc(video_file: str):
     video_path = Path(video_file)
     if not video_path.exists():
         print("File not found: {}".format(video_path))
+        return
 
     desc_path = video_path.with_suffix(_DESCRIPTOR_SUFFIX)
     if desc_path.exists():
         print("Error. Desc file already exists: {}".format(desc_path))
+        return
 
     json_str = r'''{
     "title": "{%TITLE%}",
@@ -483,12 +493,14 @@ def write_template_desc(video_file: str):
     "group": "",
     "actors": ["Unknown"],
     "timeStamps": [
-        {"ts":"00:10:00", "name":""},
-        {"ts":"00:20:00", "name":""}
+        {"ts":"00:", "name":""},
+        {"ts":"00:", "name":""}
     ]
 }'''
 
-    json_str = json_str.replace("{%TITLE%}",video_path.name)
+    title = video_path.name.replace("_"," ").title()
+
+    json_str = json_str.replace("{%TITLE%}",title)
 
     fp = desc_path.open(mode="w")
     try:
