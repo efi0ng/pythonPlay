@@ -466,11 +466,15 @@ class VideoLibrary:
     def is_descriptor_file(filename: str):
         return filename.endswith(_DESCRIPTOR_SUFFIX)
 
-    def scan_for_videos(self, verbose: bool = False):
+    def scan_for_videos(self, verbose: bool = False) -> int:
+        videos_found = 0
         for root, _, files in os.walk(str(self.root_dir)):
             descriptors = filter(VideoLibrary.is_descriptor_file, files)
             for desc in descriptors:
                 self.add_video(Path(root, desc), verbose)
+                videos_found = videos_found+1
+
+        return videos_found
 
     def deovr_construct_catalog(self) -> DeoVrCatalog:
         deovr_cat = DeoVrCatalog()
@@ -514,8 +518,12 @@ class VideoLibrary:
         if not deovr_path.exists():
             return False
         
-        # check date of deovr file vs date of desc file
-
+        # check deovr file vs newer than desc file
+        deovr_mtime = deovr_path.stat().st_mtime
+        desc_mtime = video.get_desc_path().stat().st_mtime
+        if deovr_mtime < desc_mtime:
+            return False
+        
         # check URL in existing file matches the new one
         return self.does_url_in_file_match_proposed_path(deovr_path, video.get_video_url())
 
@@ -560,7 +568,8 @@ def index_lib_for_deovr(root: str = None, base_url: str = _BASE_URL, verbose: bo
     video_lib = VideoLibrary(root_dir, base_url)
 
     print("Scanning directories starting at {}".format(root_dir))
-    video_lib.scan_for_videos(verbose)
+    num_found = video_lib.scan_for_videos(verbose)
+    print("Found {}".format(num_found))
 
     print("Writing DEOVR files")
     video_lib.deovr_write_files(verbose)
@@ -604,7 +613,7 @@ def write_template_desc(video_file: str):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:
-        index_lib_for_deovr(verbose=True)
+        index_lib_for_deovr(verbose=False)
     elif sys.argv[1].endswith("mp4") or sys.argv[1].endswith("jpg"):
         write_template_desc(sys.argv[1])
 
