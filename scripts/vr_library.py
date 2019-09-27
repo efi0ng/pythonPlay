@@ -11,7 +11,7 @@ import re
 _DESCRIPTOR_SUFFIX = ".desc"
 _ROOT_DIR_WIN = Path("N:/vr")
 _ROOT_DIR_LINUX = Path("~/mnt/oook/vr").expanduser()
-_BASE_URL: str = "http://192.168.0.2/vr/"
+_BASE_URL: str = "http://192.168.0.4/vr/"
 
 
 def urljoin(*args):
@@ -103,10 +103,15 @@ class DeoVrVideo:
     RESOLUTION = "resolution"
     ENCODINGS = "encodings"
     VIDEO_SOURCES = "videoSources"
+    SCREEN_TYPE = "screenType"
+    STEREO_MODE = "stereoMode"
+    IS_3D = "is3d"
 
-    def __init__(self, title: str, video_url: str, thumb_url: str, json_url: str, json_path: Path):
-        self.json_url = json_url
-        self.json_path = json_path
+    def __init__(self, title: str, video_url: str, thumb_url: str, json_url: str, json_path: Path, desc_path: Path):
+        self.json_url: str = json_url
+        self.json_path: str = json_path
+        self.video_url: str = video_url
+        self.desc_path: Path = desc_path
 
         self.json = {
             "encodings": [{
@@ -149,6 +154,12 @@ class DeoVrVideo:
     def get_video_json(self) -> object:
         return self.json
 
+    def get_video_url(self) -> str:
+        return self.video_url
+
+    def get_desc_path(self) -> str:
+        return self.desc_path
+
     def set_preview(self, preview_url):
         self.json["videoPreview"] = preview_url
 
@@ -158,6 +169,23 @@ class DeoVrVideo:
     def set_duration(self, duration):
         if duration > 0:
             self.json[DeoVrVideo.DURATION] = duration
+
+    def set_screen_type(self, screen_type):
+        self.json[DeoVrVideo.SCREEN_TYPE] = screen_type
+
+    def set_stereo_mode(self, stereo_mode):
+        self.json[DeoVrVideo.STEREO_MODE] = stereo_mode
+        if stereo_mode == "off":
+            self.json[DeoVrVideo.IS_3D] = False
+
+    def set_2d(self):
+        '''Short hand to set up video as flat 2d'''
+        self.json[DeoVrVideo.STEREO_MODE] = "off"
+        self.json[DeoVrVideo.IS_3D] = False
+        self.json.pop(DeoVrVideo.SCREEN_TYPE, None)
+
+    def set_3d(self, is_3d: bool):
+       self.json[DeoVrVideo.IS_3D] = is_3d
 
     def set_resolution(self, resolution):
         if resolution > 0:
@@ -233,6 +261,8 @@ class VrDescLabels:
     TIME_STAMPS = "timeStamps"
     TS_TIMECODE = "ts"
     TS_NAME = "name"
+    SCREEN_TYPE = "type"
+    STEREO_MODE = "stereo"
 
 
 class VrVideoDesc:
@@ -242,13 +272,14 @@ class VrVideoDesc:
     PREVIEW_SUFFIX = "_preview.mp4"
     DEOVR_EXT = ".deovr"
     VIDEO_SUFFIX = ".mp4"
+    SCREEN_TYPE_2D = "2D"
 
-    def __init__(self, descriptor: Path,
+    def __init__(self, desc_path: Path,
                  parent_path: Path, parent_url: str,
                  title: str, group: str,
                  video_url: str, thumb_url: str,
                  duration: int = 0, resolution: int = 0):
-        self.descriptor: Path = descriptor
+        self.desc_path: Path = desc_path
         self._parent_path: Path = parent_path
         self._parent_url: str = parent_url
         self.title: str = title
@@ -259,13 +290,16 @@ class VrVideoDesc:
         self.time_stamps: Any = None
         self.duration: int = duration
         self.resolution: int = resolution
+        self.screen_type: Optional[str] = None
+        self.stereo_mode: Optional[str] = None
+        self.is_3d: bool = True
         self._group: str = group
 
     @property
     def group(self): return self._group
 
     @property
-    def name_stem(self): return self.descriptor.stem
+    def name_stem(self): return self.desc_path.stem
 
     @property
     def parent_path(self): return self._parent_path
@@ -278,7 +312,8 @@ class VrVideoDesc:
         deovr_url = urljoin(self.parent_url, self.name_stem + VrVideoDesc.DEOVR_EXT)
         deovr_path = self.parent_path / (self.name_stem + VrVideoDesc.DEOVR_EXT)
 
-        deovr = DeoVrVideo(self.title, self.video_url, self.thumb_url, deovr_url, deovr_path)
+        deovr = DeoVrVideo(self.title, self.video_url, self.thumb_url, deovr_url, deovr_path, self.desc_path)
+
         if self.preview_url:
             deovr.set_preview(self.preview_url)
 
@@ -293,6 +328,18 @@ class VrVideoDesc:
 
         if self.time_stamps:
             deovr.set_time_stamps(self.time_stamps)
+
+        if not self.is_3d:
+            deovr.set_3d(false);
+        
+        if self.screen_type:
+            if self.screen_type == VrVideoDesc.SCREEN_TYPE_2D:
+                deovr.set_2d()
+            else:
+                deovr.set_screen_type(self.screen_type)
+
+        if self.stereo_mode:
+            deovr.set_stereo_mode(self.stereo_mode)
 
         return deovr
 
@@ -329,11 +376,19 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
         thumb_url = urljoin(base_url, thumb_file.as_posix())
 
         desc_json = json.load(file)
-        title = desc_json[VrDescLabels.TITLE]
-        group = desc_json[VrDescLabels.GROUP]
-        if group == "":
-            group = calc_group_from_relative_path(relative_path)
 
+        # title
+        title = desc_json[VrDescLabels.TITLE]
+
+        # group
+        group = ""
+        if VrDescLabels.GROUP in desc_json:
+            group = desc_json[VrDescLabels.GROUP]
+
+        if group == "":
+                group = calc_group_from_relative_path(relative_path)
+
+        # video name and path
         if VrDescLabels.VIDEO not in desc_json:
             video = desc_path.stem + VrVideoDesc.VIDEO_SUFFIX
         else:
@@ -346,18 +401,22 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
 
         video_url = urljoin(base_url, relative_path.with_name(video).as_posix())
 
+        # create description object
         vid_desc = VrVideoDesc(desc_path, parent_path, parent_url, title, group, video_url, thumb_url)
 
+        # preview file
         preview_file = desc_path.stem + VrVideoDesc.PREVIEW_SUFFIX
         if desc_path.with_name(preview_file).exists():
             preview_url = urljoin(base_url, relative_path.with_name(preview_file).as_posix())
             vid_desc.preview_url = str(preview_url)
 
+        # seek file
         seek_file = desc_path.stem + VrVideoDesc.SEEK_SUFFIX
         if desc_path.with_name(seek_file).exists():
             seek_url = urljoin(base_url, relative_path.with_name(seek_file).as_posix())
             vid_desc.seek_url = str(seek_url)
 
+        # other attributes
         if VrDescLabels.TIME_STAMPS in desc_json:
             vid_desc.time_stamps = parse_time_stamps(desc_json[VrDescLabels.TIME_STAMPS])
 
@@ -370,6 +429,12 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
 
         if VrDescLabels.RESOLUTION in desc_json:
             vid_desc.resolution = desc_json[VrDescLabels.RESOLUTION]
+
+        if VrDescLabels.SCREEN_TYPE in desc_json:
+            vid_desc.screen_type = desc_json[VrDescLabels.SCREEN_TYPE]
+
+        if VrDescLabels.STEREO_MODE in desc_json:
+            vid_desc.stereo_mode = desc_json[VrDescLabels.STEREO_MODE]
 
     finally:
         if file:
@@ -432,6 +497,17 @@ class VideoLibrary:
         finally:
             fp.close()
 
+    @staticmethod
+    def deovr_existing_file_valid(video: DeoVrVideo) -> bool:
+        deovr_path = Path(video.json_path)
+        if not deovr_path.exists():
+            return False
+        
+        # check date of deovr file vs date of desc file
+
+        # check URL in existing file matches the new one
+        return True
+
     def deovr_write_files(self, verbose: bool = False):
         _DEO_CATALOG_FILENAME = "deovr"
         # convert library to DeoVrScene hierarchy
@@ -452,7 +528,8 @@ class VideoLibrary:
 
         for scene in deovr_cat.scenes:
             for video in scene.videos:
-                self.deovr_write_vid_file(video)
+                if not self.deovr_existing_file_valid(video):
+                    self.deovr_write_vid_file(video)
 
 
 def index_lib_for_deovr(root: str = None, base_url: str = _BASE_URL, verbose: bool = False):
