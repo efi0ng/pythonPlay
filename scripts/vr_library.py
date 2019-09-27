@@ -330,7 +330,7 @@ class VrVideoDesc:
             deovr.set_time_stamps(self.time_stamps)
 
         if not self.is_3d:
-            deovr.set_3d(false);
+            deovr.set_3d(False)
         
         if self.screen_type:
             if self.screen_type == VrVideoDesc.SCREEN_TYPE_2D:
@@ -346,7 +346,7 @@ class VrVideoDesc:
 
 def calc_group_from_relative_path(rel_path: Path):
     """Decide group from first dir in the relative path"""
-    group_name = rel_path.parts[0];
+    group_name = rel_path.parts[0]
     return group_name.lower().capitalize()
 
 
@@ -356,7 +356,7 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
         for stamp in ts_json:
             time_code = stamp[VrDescLabels.TS_TIMECODE]
             if not TimeCode.is_valid(time_code):
-                print("Invalid timecode ignored: {}".format(time_code))
+                #print("Invalid timecode ignored: {}".format(time_code))
                 continue
 
             name = stamp[VrDescLabels.TS_NAME]
@@ -424,9 +424,7 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
             duration_str = desc_json[VrDescLabels.DURATION]
             if TimeCode.is_valid(duration_str):
                 vid_desc.duration = TimeCode.duration(duration_str)
-            else:
-                print("{} has invalid time code:{}".format(desc_path, duration_str))
-
+ 
         if VrDescLabels.RESOLUTION in desc_json:
             vid_desc.resolution = desc_json[VrDescLabels.RESOLUTION]
 
@@ -469,7 +467,7 @@ class VideoLibrary:
         return filename.endswith(_DESCRIPTOR_SUFFIX)
 
     def scan_for_videos(self, verbose: bool = False):
-        for root, dirs, files in os.walk(str(self.root_dir)):
+        for root, _, files in os.walk(str(self.root_dir)):
             descriptors = filter(VideoLibrary.is_descriptor_file, files)
             for desc in descriptors:
                 self.add_video(Path(root, desc), verbose)
@@ -498,7 +496,20 @@ class VideoLibrary:
             fp.close()
 
     @staticmethod
-    def deovr_existing_file_valid(video: DeoVrVideo) -> bool:
+    def does_url_in_file_match_proposed_path(deovr_path: Path, proposed_url: str):
+        fp = deovr_path.open(mode="r")
+        try:
+            file_json = json.load(fp)
+            url_from_file = file_json["encodings"][0]["videoSources"][0]["url"]
+            return url_from_file == proposed_url
+        except:
+            pass
+        finally:
+            fp.close()
+
+        return False
+
+    def deovr_existing_file_valid(self, video: DeoVrVideo) -> bool:
         deovr_path = Path(video.json_path)
         if not deovr_path.exists():
             return False
@@ -506,14 +517,9 @@ class VideoLibrary:
         # check date of deovr file vs date of desc file
 
         # check URL in existing file matches the new one
-        return True
+        return self.does_url_in_file_match_proposed_path(deovr_path, video.get_video_url())
 
-    def deovr_write_files(self, verbose: bool = False):
-        _DEO_CATALOG_FILENAME = "deovr"
-        # convert library to DeoVrScene hierarchy
-        deovr_cat = self.deovr_construct_catalog()
-
-        deovr_file = self.root_dir / _DEO_CATALOG_FILENAME
+    def write_deovr_index_file(self, deovr_file: Path, deovr_cat:DeoVrCatalog, verbose: bool):
         if verbose:
             print("Writing deovr index file at {}".format(deovr_file))
 
@@ -523,12 +529,21 @@ class VideoLibrary:
         finally:
             fp.close()
 
+    def deovr_write_files(self, verbose: bool = False):
+        _DEO_CATALOG_FILENAME = "deovr"
+        # convert library to DeoVrScene hierarchy
+        deovr_cat = self.deovr_construct_catalog()
+
+        deovr_file = self.root_dir / _DEO_CATALOG_FILENAME
+        self.write_deovr_index_file(deovr_file, deovr_cat, verbose)
+
         if verbose:
             print("Writing deovr video files")
 
         for scene in deovr_cat.scenes:
             for video in scene.videos:
                 if not self.deovr_existing_file_valid(video):
+                    print("Invalid deovr file found at: {}".format(video.json_path))
                     self.deovr_write_vid_file(video)
 
 
