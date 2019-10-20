@@ -365,6 +365,7 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
 
         return time_stamps
 
+    vid_desc = None
     file = None
     try:
         file = desc_path.open(mode="r", encoding="utf-8")
@@ -433,7 +434,8 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
 
         if VrDescLabels.STEREO_MODE in desc_json:
             vid_desc.stereo_mode = desc_json[VrDescLabels.STEREO_MODE]
-
+    except:
+        print("Error in file: {}".format(desc_path))
     finally:
         if file:
             file.close()
