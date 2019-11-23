@@ -252,6 +252,7 @@ class VrDescLabels:
     TITLE = "title"
     SITE = "site"
     VIDEO = "video"
+    VIDEO_URL = "video_url"
     PREVIEW = "preview"
     SEEK = "seek"
     DURATION = "duration"
@@ -389,18 +390,23 @@ def load_video(desc_path: Path, root_dir: Path, base_url: str) -> Optional[VrVid
         if group == "":
                 group = calc_group_from_relative_path(relative_path)
 
-        # video name and path
-        if VrDescLabels.VIDEO not in desc_json:
-            video = desc_path.stem + VrVideoDesc.VIDEO_SUFFIX
+        # absolute video URL
+        if VrDescLabels.VIDEO_URL in desc_json:
+            video_url = desc_json[VrDescLabels.VIDEO_URL]
         else:
-            video = desc_json[VrDescLabels.VIDEO]
+            # video name and path
+            if VrDescLabels.VIDEO not in desc_json:
+                video = desc_path.stem + VrVideoDesc.VIDEO_SUFFIX
+            else:
+                video = desc_json[VrDescLabels.VIDEO]
 
-        video_path = desc_path.with_name(video)
-        if not video_path.exists():
-            print("Video file not found: {}".format(video_path))
-            return None
+            video_path = desc_path.with_name(video)
+            if not video_path.exists():
+                print("Video file not found: {}".format(video_path))
+                return None
 
-        video_url = urljoin(base_url, relative_path.with_name(video).as_posix())
+            video_url = urljoin(base_url, relative_path.with_name(video).as_posix())
+
 
         # create description object
         vid_desc = VrVideoDesc(desc_path, parent_path, parent_url, title, group, video_url, thumb_url)
